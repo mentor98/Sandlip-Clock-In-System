@@ -1,0 +1,150 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                 ABSENCE MARKING — QUICK START GUIDE                        ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+WHAT'S NEW:
+───────────────────────────────────────────────────────────────────────────
+Students who don't clock in by 9:30 AM are automatically marked ABSENT.
+
+SETUP (5 minutes):
+───────────────────────────────────────────────────────────────────────────
+1. Install dependencies:
+   $ cd backend && npm install
+
+2. Run database migrations:
+   - Go to Supabase → SQL Editor
+   - Paste: backend/db/migrations.sql
+   - Click "Run"
+
+3. Start backend:
+   $ npm run dev
+   
+   Look for: "✓ Absence job scheduled: every day at 09:30 UTC"
+
+TIMING (7 AM – 9:30 AM):
+───────────────────────────────────────────────────────────────────────────
+7:00 AM   → Admin starts "Morning Session" (on_time_until = 09:00)
+7:00-9:00 → Students clock in (marked on-time)
+9:01-9:30 → Late students clock in (marked is_late = true)
+9:30 AM   → Scheduler runs: marks students with no clock-in as ABSENT
+10:00 AM  → Admin closes session
+
+DATABASE:
+───────────────────────────────────────────────────────────────────────────
+attendance table adds:
+  - marked_absent_at   (when auto-marked)
+  - absence_reason     (why marked absent)
+  - is_late           (late arrival flag)
+  - verification_status (now includes 'AUTO_ABSENT')
+
+attendance_sessions table adds:
+  - on_time_until     (deadline for on-time arrival, e.g. 09:00)
+
+ADMIN DASHBOARD:
+───────────────────────────────────────────────────────────────────────────
+Overview shows:
+  - "Absent today" stat card (gray icon)
+  - Attendance table with "Status" column (shows "Absent" in gray)
+
+NEW ADMIN API:
+───────────────────────────────────────────────────────────────────────────
+GET /api/admin/attendance/absent?session_id=<uuid>
+
+Response:
+{
+  "absent": [
+    {
+      "students": { "full_name": "John Doe", "student_id": "STU-001" },
+      "verification_status": "AUTO_ABSENT",
+      "absence_reason": "No clock-in by 09:30 AM",
+      "marked_absent_at": "2024-09-01T09:30:00Z"
+    }
+  ]
+}
+
+TESTING (without waiting until 9:30 AM):
+───────────────────────────────────────────────────────────────────────────
+Add to backend/src/routes/admin.js:
+
+  if (process.env.NODE_ENV !== 'production') {
+    router.post('/trigger-absence-check', async (req, res) => {
+      const { markAbsent } = require('../services/absenceMarker');
+      await markAbsent();
+      res.json({ success: true });
+    });
+  }
+
+Then call:
+  curl -X POST http://localhost:4000/api/admin/trigger-absence-check \
+    -H "Authorization: Bearer <token>"
+
+TIMEZONE (Change if needed):
+───────────────────────────────────────────────────────────────────────────
+Default: 9:30 AM UTC
+
+To change, edit: backend/src/jobs/absenceScheduler.js
+
+Find this line:
+  const absenceJob = cron.schedule('30 9 * * *', async () => {
+
+Add timezone:
+  const absenceJob = cron.schedule('30 9 * * *', async () => {
+    // ...
+  }, {
+    timezone: 'America/New_York'  // or other IANA timezone
+  });
+
+Common timezones:
+  - 'America/New_York' (Eastern)
+  - 'America/Chicago' (Central)
+  - 'America/Los_Angeles' (Pacific)
+  - 'Europe/London' (UK)
+  - 'Asia/Tokyo' (Japan)
+
+FILES CREATED:
+───────────────────────────────────────────────────────────────────────────
+✓ backend/src/services/absenceMarker.js     (Core logic)
+✓ backend/src/jobs/absenceScheduler.js      (Cron scheduler)
+
+FILES MODIFIED:
+───────────────────────────────────────────────────────────────────────────
+✓ backend/db/schema.sql
+✓ backend/db/migrations.sql
+✓ backend/package.json (added node-cron)
+✓ backend/src/index.js (integrated scheduler)
+✓ backend/src/routes/admin.js (added /attendance/absent endpoint)
+
+DOCUMENTATION:
+───────────────────────────────────────────────────────────────────────────
+- SETUP_ABSENCE_MARKING.md           → Step-by-step guide
+- ABSENCE_MARKING_IMPLEMENTATION.md  → Detailed architecture
+- ABSENCE_MARKING_SUMMARY.md         → Full overview
+
+TROUBLESHOOTING:
+───────────────────────────────────────────────────────────────────────────
+Cron not running?
+  → Check backend logs for "Initializing scheduled jobs..."
+  → Verify Node.js 12+ installed
+  → Check server time: date
+  → Verify timezone setting
+
+Students not marked absent?
+  → Check sessions exist: SELECT * FROM attendance_sessions WHERE DATE(...) = TODAY();
+  → Manually trigger dev endpoint: curl -X POST ... /trigger-absence-check
+  → Check audit log for errors
+
+PRODUCTION CHECKLIST:
+───────────────────────────────────────────────────────────────────────────
+□ Remove /trigger-absence-check dev endpoint
+□ Set correct timezone for your region
+□ Run full database migrations
+□ Test with real session data
+□ Monitor cron job for first week
+□ Set up alerting if cron fails
+□ Backup database
+□ Communicate to admins
+□ Document absence policy for students
+
+═══════════════════════════════════════════════════════════════════════════
+That's it! You're ready to use absence marking.
+═══════════════════════════════════════════════════════════════════════════
