@@ -225,19 +225,6 @@ async function fetchNextStudentId() {
   }
 }
 
-// Chip IDs click-to-fill
-document.querySelectorAll('.chip-id').forEach(chip => {
-  chip.onclick = () => {
-    const id = chip.textContent.trim();
-    const input = document.getElementById('student-id');
-    if (input) {
-      input.value = id;
-      hideSigninAlert();
-      input.focus();
-    }
-  };
-});
-
 // Front Clear QR button
 const btnFrontClearQr = document.getElementById('btn-front-clear-qr');
 if (btnFrontClearQr) {

@@ -183,4 +183,24 @@
   }
 
   .notice.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
+
+  @media (max-width: 640px) {
+    .card { padding: 16px; }
+    .header-row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .filters {
+      width: 100%;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      -webkit-overflow-scrolling: touch;
+      flex-wrap: nowrap;
+    }
+    th, td {
+      padding: 10px 12px;
+      font-size: 12px;
+    }
+  }
 </style>

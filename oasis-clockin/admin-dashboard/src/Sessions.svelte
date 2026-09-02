@@ -451,7 +451,10 @@
 
   .table-wrap {
     background: white; border: 1px solid #e2e8f0; border-radius: 14px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.03); overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
   }
   .table-header-bar {
     padding: 16px 20px; border-bottom: 1px solid #f1f5f9;
@@ -460,7 +463,12 @@
   .table-header-bar h3 { margin: 0; font-size: 15px; font-weight: 700; color: #0f172a; }
   .count-badge { font-size: 12px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 2px 8px; border-radius: 999px; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table {
+    width: 100%;
+    min-width: 680px;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
   th {
     background: #f8fafc; text-align: left; padding: 12px 20px;
     color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
@@ -599,9 +607,53 @@
     color: #64748b; transition: all 0.15s;
   }
   .close-btn:hover { background: #e2e8f0; color: #0f172a; }
-  .modal-table-wrap { max-height: 360px; overflow-y: auto; }
+  .modal-table-wrap {
+    max-height: 360px;
+    overflow-y: auto;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .modal-table-wrap table {
+    min-width: 540px;
+  }
   .modal-actions {
     padding: 14px 22px; border-top: 1px solid #e2e8f0;
     display: flex; justify-content: flex-end; background: #f8fafc;
+  }
+
+  @media (max-width: 768px) {
+    .projector-modal {
+      width: 95vw;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .projector-body {
+      padding: 16px;
+      gap: 16px;
+    }
+    .scans-col {
+      height: auto;
+      max-height: 300px;
+    }
+    .qr-box {
+      max-width: 100%;
+    }
+    .qr-image-lg {
+      width: 200px;
+      height: 200px;
+    }
+    .form-card {
+      padding: 18px 16px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    th, td {
+      padding: 10px 14px;
+      font-size: 12.5px;
+    }
+    .table-header-bar {
+      padding: 12px 16px;
+    }
   }
 </style>

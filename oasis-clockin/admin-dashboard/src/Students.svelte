@@ -420,9 +420,17 @@
 
   .table-wrap {
     background: white; border: 1px solid #e2e8f0; border-radius: 14px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.03); overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
   }
-  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table {
+    width: 100%;
+    min-width: 680px;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
   th {
     background: #f8fafc; text-align: left; padding: 12px 20px;
     color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
@@ -510,5 +518,36 @@
   .modal-actions {
     padding: 14px 22px; border-top: 1px solid #e2e8f0;
     display: flex; justify-content: flex-end; gap: 10px; background: #f8fafc;
+  }
+
+  @media (max-width: 768px) {
+    .toolbar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+    }
+    .search-row {
+      max-width: 100%;
+      width: 100%;
+    }
+    .form-row {
+      grid-template-columns: 1fr;
+    }
+    .form-card {
+      padding: 18px 16px;
+    }
+    .modal-body {
+      padding: 16px;
+    }
+    .modal-header, .modal-actions {
+      padding: 14px 16px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    th, td {
+      padding: 10px 14px;
+      font-size: 12.5px;
+    }
   }
 </style>

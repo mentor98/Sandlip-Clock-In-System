@@ -108,4 +108,9 @@
   .notice { padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; margin: 0; }
   .notice.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
   .notice.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+  @media (max-width: 640px) {
+    .card { padding: 18px 16px; }
+    .btn-primary { width: 100%; }
+  }
 </style>

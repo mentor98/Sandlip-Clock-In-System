@@ -537,5 +537,23 @@
   .qr-footer { padding: 0 22px 22px; display: flex; flex-direction: column; gap: 8px; }
   .hint { font-size: 11px; color: #64748b; text-align: center; margin: 0; }
 
-  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 640px) {
+    .panel { padding: 18px 16px; }
+    .row2 { grid-template-columns: 1fr; }
+    .qr-modal { width: 95vw; margin: 10px; }
+    .qr-image { width: 190px; height: 190px; }
+    .loc-card {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .loc-actions {
+      width: 100%;
+      justify-content: flex-end;
+    }
+  }
 </style>

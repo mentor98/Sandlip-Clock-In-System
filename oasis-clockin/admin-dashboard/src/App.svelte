@@ -14,6 +14,7 @@
 
   let loggedIn = isLoggedIn();
   let tab = 'overview';
+  let mobileMenuOpen = false;
 
   const tabs = [
     { id: 'overview',     label: 'Overview',     icon: 'overview' },
@@ -29,6 +30,11 @@
 
   const tabLabels = Object.fromEntries(tabs.map(t => [t.id, t.label]));
 
+  function selectTab(id) {
+    tab = id;
+    mobileMenuOpen = false;
+  }
+
   function handleLogout() { logout(); loggedIn = false; }
 </script>
 
@@ -36,20 +42,27 @@
   <Login onLoggedIn={() => (loggedIn = true)} />
 {:else}
   <div class="shell">
-    <aside class="sidebar">
+    {#if mobileMenuOpen}
+      <div class="sidebar-backdrop" on:click={() => (mobileMenuOpen = false)}></div>
+    {/if}
+
+    <aside class="sidebar" class:open={mobileMenuOpen}>
       <div class="brand">
         <div class="logo-box">
           <Icon name="clock" size={20} color="#ffffff" strokeWidth={2.2} />
         </div>
-        <div>
+        <div class="brand-text">
           <span class="brand-name">Oasis ClockIn</span>
           <span class="brand-sub">Enterprise Portal</span>
         </div>
+        <button class="close-drawer-btn" on:click={() => (mobileMenuOpen = false)} aria-label="Close menu">
+          <Icon name="x" size={18} color="#94a3b8" />
+        </button>
       </div>
 
       <nav>
         {#each tabs as t}
-          <button class:active={tab === t.id} on:click={() => (tab = t.id)}>
+          <button class:active={tab === t.id} on:click={() => selectTab(t.id)}>
             <span class="icon-wrap">
               <Icon name={t.icon} size={16} strokeWidth={2} />
             </span>
@@ -73,12 +86,15 @@
     <main class="content">
       <header class="topbar">
         <div class="topbar-left">
+          <button class="menu-btn" on:click={() => (mobileMenuOpen = !mobileMenuOpen)} aria-label="Toggle navigation menu">
+            <Icon name="menu" size={20} color="#0f172a" />
+          </button>
           <h2 class="page-title">{tabLabels[tab] || ''}</h2>
         </div>
         <div class="topbar-right">
           <span class="live-status">
             <span class="pulse-dot"></span>
-            System Active
+            <span class="live-text">System Active</span>
           </span>
         </div>
       </header>
@@ -117,14 +133,53 @@
     z-index: 20;
   }
   .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; padding: 0 6px; }
+  .brand-text { flex: 1; }
   .logo-box {
     width: 38px; height: 38px; border-radius: 10px;
     background: linear-gradient(135deg, #32F000 0%, #0db872 32%, #0284c7 68%, #073B78 100%);
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 4px 14px rgba(50, 240, 0, 0.35);
+    flex-shrink: 0;
   }
   .brand-name { display: block; font-weight: 800; font-size: 15.5px; letter-spacing: -0.01em; color: #ffffff; }
   .brand-sub { display: block; font-size: 10.5px; color: #93c5fd; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  .close-drawer-btn {
+    display: none;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    color: #94a3b8;
+  }
+  .close-drawer-btn:hover { background: rgba(255,255,255,0.08); color: #ffffff; }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(7, 21, 39, 0.7);
+    backdrop-filter: blur(2px);
+    z-index: 40;
+    animation: fadeIn 0.15s ease-out;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .menu-btn {
+    display: none;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 7px 9px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    transition: all 0.15s;
+  }
+  .menu-btn:hover { background: #e2e8f0; }
+
+  .topbar-left { display: flex; align-items: center; }
 
   nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
   nav button {
@@ -183,4 +238,56 @@
     box-shadow: 0 0 8px rgba(50, 240, 0, 0.8);
   }
   .page { padding: 28px 32px; flex: 1; }
+
+  @media (max-width: 992px) {
+    .menu-btn { display: inline-flex; }
+    .close-drawer-btn { display: flex; align-items: center; justify-content: center; }
+    .sidebar {
+      width: 270px;
+      transform: translateX(-100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 50;
+      box-shadow: 4px 0 24px rgba(7, 21, 39, 0.4);
+    }
+    .sidebar.open {
+      transform: translateX(0);
+    }
+    .content {
+      margin-left: 0;
+      width: 100%;
+    }
+    .topbar {
+      padding: 14px 20px;
+    }
+    .page {
+      padding: 20px 18px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .topbar {
+      padding: 10px 14px;
+    }
+    .page-title {
+      font-size: 16px;
+    }
+    .live-status {
+      font-size: 11px;
+      padding: 4px 8px;
+      gap: 6px;
+    }
+    .live-text {
+      display: none;
+    }
+    .pulse-dot::after {
+      content: ' Live';
+      font-size: 11px;
+      font-weight: 700;
+      color: #15803d;
+      margin-left: 12px;
+    }
+    .page {
+      padding: 14px 12px;
+    }
+  }
 </style>

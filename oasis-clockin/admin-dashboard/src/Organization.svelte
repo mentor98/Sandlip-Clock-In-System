@@ -551,4 +551,13 @@
     border-radius: 8px; font-size: 12px; font-weight: 600; color: #065f46;
   }
   .dot-online { width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block; box-shadow: 0 0 6px #10b981; }
+
+  @media (max-width: 640px) {
+    .card { padding: 16px; }
+    .row2 { grid-template-columns: 1fr; }
+    .schedule-grid { grid-template-columns: 1fr; }
+    .range-row { flex-direction: column; align-items: stretch; }
+    .radius-num { width: 100%; text-align: left; }
+    .btn-primary { width: 100%; }
+  }
 </style>

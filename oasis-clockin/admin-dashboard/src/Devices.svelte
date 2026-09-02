@@ -215,9 +215,17 @@
 
   .table-wrap {
     background: white; border: 1px solid #e2e8f0; border-radius: 14px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.03); overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
   }
-  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table {
+    width: 100%;
+    min-width: 680px;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
   th {
     background: #f8fafc; text-align: left; padding: 12px 20px;
     color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
@@ -267,5 +275,17 @@
     padding: 48px 20px; text-align: center; color: #94a3b8;
     display: flex; flex-direction: column; align-items: center; gap: 10px;
     font-size: 14px;
+  }
+
+  @media (max-width: 640px) {
+    th, td {
+      padding: 10px 14px;
+      font-size: 12.5px;
+    }
+    .filter-tabs {
+      overflow-x: auto;
+      padding-bottom: 4px;
+      -webkit-overflow-scrolling: touch;
+    }
   }
 </style>

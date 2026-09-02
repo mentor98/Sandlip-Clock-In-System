@@ -319,24 +319,28 @@
     color: #15803d;
   }
 
-  @media (max-width: 900px) {
-    .login-split-page {
-      flex-direction: column;
+  @media (max-width: 480px) {
+    .login-center-page {
+      padding: 16px 12px;
     }
-    .left-image-panel {
-      min-height: auto;
-      max-height: none;
-      padding: 24px 20px;
-      border-right: none;
-      border-bottom: 1px solid #e2e8f0;
-      flex: none;
+    .form-card {
+      padding: 24px 18px;
+      border-radius: 14px;
     }
-    .hero-full-img {
-      max-height: 200px;
-      max-width: 260px;
+    .welcome-text h2 {
+      font-size: 20px;
     }
-    .right-form-panel {
-      padding: 32px 24px;
+    h1 {
+      font-size: 18px;
+    }
+    .logo-box {
+      width: 40px;
+      height: 40px;
+    }
+    .input-wrap input {
+      font-size: 14px;
+      padding-top: 11px;
+      padding-bottom: 11px;
     }
   }
 </style>
