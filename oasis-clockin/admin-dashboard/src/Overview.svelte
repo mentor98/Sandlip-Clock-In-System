@@ -173,6 +173,7 @@
             <tr>
               <th>Student</th>
               <th>Type</th>
+              <th>Punctuality</th>
               <th>Location</th>
               <th>Trust Score</th>
               <th>Status</th>
@@ -187,6 +188,15 @@
                   <span class="pill {r.type === 'clock_in' ? 'pill-in' : 'pill-out'}">
                     {r.type === 'clock_in' ? 'Clock In' : 'Clock Out'}
                   </span>
+                </td>
+                <td>
+                  {#if r.type === 'clock_in' && r.punctuality}
+                    <span class="punct-chip punct-{r.punctuality.toLowerCase()}">{r.punctuality}</span>
+                  {:else if r.type === 'clock_in'}
+                    <span class="punct-chip punct-towards">RECORDED</span>
+                  {:else}
+                    <span class="muted">—</span>
+                  {/if}
                 </td>
                 <td>{r.locations?.name || '—'}</td>
                 <td>
@@ -333,6 +343,14 @@
   .pill-verified { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
   .pill-review { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
   .pill-rejected { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+  .punct-chip {
+    display: inline-block; padding: 2px 7px; border-radius: 6px;
+    font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .punct-early { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+  .punct-towards { background: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc; }
+  .punct-late { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
 
   .score-badge {
     display: inline-block; padding: 2px 7px; border-radius: 6px;

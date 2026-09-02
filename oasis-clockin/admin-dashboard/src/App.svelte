@@ -110,33 +110,35 @@
   .shell { display: flex; min-height: 100vh; }
 
   .sidebar {
-    width: 240px; background: #0b1f1c; color: #f1f5f9;
+    width: 240px; background: #071527; color: #f1f5f9;
     display: flex; flex-direction: column; padding: 24px 16px;
     flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0;
-    overflow-y: auto; border-right: 1px solid rgba(255,255,255,0.06);
+    overflow-y: auto; border-right: 1px solid rgba(50, 240, 0, 0.12);
     z-index: 20;
   }
   .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; padding: 0 6px; }
   .logo-box {
-    width: 36px; height: 36px; border-radius: 10px;
-    background: linear-gradient(135deg, #0f9b8e 0%, #0b5c54 100%);
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(135deg, #32F000 0%, #0db872 32%, #0284c7 68%, #073B78 100%);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 12px rgba(15,155,142,0.3);
+    box-shadow: 0 4px 14px rgba(50, 240, 0, 0.35);
   }
-  .brand-name { display: block; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; color: #ffffff; }
-  .brand-sub { display: block; font-size: 11px; color: #64968e; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+  .brand-name { display: block; font-weight: 800; font-size: 15.5px; letter-spacing: -0.01em; color: #ffffff; }
+  .brand-sub { display: block; font-size: 10.5px; color: #93c5fd; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 
-  nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+  nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
   nav button {
     display: flex; align-items: center; gap: 11px; padding: 10px 12px;
     border-radius: 9px; border: none; background: transparent;
-    color: #94a3b8; cursor: pointer; font-size: 13.5px; font-weight: 500;
+    color: #94a3b8; cursor: pointer; font-size: 13.5px; font-weight: 600;
     text-align: left; transition: all 0.15s ease; width: 100%;
   }
-  nav button:hover { background: rgba(255,255,255,0.06); color: #f8fafc; }
+  nav button:hover { background: rgba(255,255,255,0.06); color: #ffffff; }
   nav button.active {
-    background: #0f766e; color: #ffffff; font-weight: 600;
-    box-shadow: 0 2px 8px rgba(15,118,110,0.35);
+    background: linear-gradient(135deg, #32F000 0%, #0db872 30%, #0284c7 68%, #073B78 100%);
+    color: #ffffff; font-weight: 700;
+    box-shadow: 0 4px 14px rgba(7, 59, 120, 0.35);
+    text-shadow: 0 1px 2px rgba(7, 59, 120, 0.4);
   }
   .icon-wrap { width: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .nav-label { flex: 1; }
@@ -147,11 +149,12 @@
   }
   .student-link {
     display: flex; align-items: center; gap: 9px; padding: 9px 12px;
-    border-radius: 8px; text-decoration: none; color: #0d9488;
-    background: rgba(13,148,136,0.12); font-size: 13px; font-weight: 600;
+    border-radius: 8px; text-decoration: none; color: #32F000;
+    background: rgba(50, 240, 0, 0.1); border: 1px solid rgba(50, 240, 0, 0.2);
+    font-size: 13px; font-weight: 700;
     transition: all 0.15s;
   }
-  .student-link:hover { background: rgba(13,148,136,0.22); color: #2dd4bf; }
+  .student-link:hover { background: rgba(50, 240, 0, 0.18); color: #ffffff; }
 
   .logout {
     display: flex; align-items: center; gap: 9px;
@@ -166,18 +169,18 @@
     background: #ffffff; padding: 16px 32px; border-bottom: 1px solid #e2e8f0;
     position: sticky; top: 0; z-index: 10;
     display: flex; align-items: center; justify-content: space-between;
-    box-shadow: 0 1px 2px 0 rgba(0,0,0,0.02);
+    box-shadow: 0 1px 3px 0 rgba(7, 59, 120, 0.04);
   }
-  .page-title { margin: 0; font-size: 18px; font-weight: 700; color: #0f172a; letter-spacing: -0.01em; }
+  .page-title { margin: 0; font-size: 18px; font-weight: 800; color: #071527; letter-spacing: -0.01em; }
   .live-status {
     display: inline-flex; align-items: center; gap: 8px;
-    font-size: 12px; font-weight: 600; color: #0f766e;
-    background: #f0fdfa; border: 1px solid #ccfbf1;
-    padding: 4px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; color: #15803d;
+    background: #f0fdf4; border: 1px solid #bbf7d0;
+    padding: 5px 12px; border-radius: 999px;
   }
   .pulse-dot {
-    width: 6px; height: 6px; border-radius: 50%; background: #0d9488;
-    box-shadow: 0 0 0 2px rgba(13,148,136,0.2);
+    width: 7px; height: 7px; border-radius: 50%; background: #32F000;
+    box-shadow: 0 0 8px rgba(50, 240, 0, 0.8);
   }
   .page { padding: 28px 32px; flex: 1; }
 </style>

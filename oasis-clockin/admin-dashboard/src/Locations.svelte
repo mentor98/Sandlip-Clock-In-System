@@ -22,8 +22,10 @@
   let qrLocation = null;
   let qrSrc = '';
   let qrExpiry = 0;
+  let qrAdminIp = '';
   let qrTimer = null;
   let qrGenerating = false;
+  let autoRotate = true;
 
   function initMap() {
     if (!mapElement || map) return;
@@ -184,13 +186,18 @@
       const res = await api(`/admin/locations/${loc.id}/generate-qr`, { method: 'POST' });
       qrLocation = loc;
       qrSrc = `data:image/png;base64,${res.qr_png_base64}`;
-      qrExpiry = res.expires_in_seconds;
+      qrExpiry = res.expires_in_seconds || 25;
+      qrAdminIp = res.admin_ip || '127.0.0.1';
 
       qrTimer = setInterval(() => {
         qrExpiry -= 1;
         if (qrExpiry <= 0) {
           clearInterval(qrTimer);
-          qrSrc = '';
+          if (autoRotate && qrLocation) {
+            generateQr(qrLocation);
+          } else {
+            qrSrc = '';
+          }
         }
       }, 1000);
     } catch (e) { error = e.message; }
@@ -322,7 +329,7 @@
       <div class="qr-header">
         <div>
           <h3>{qrLocation.name}</h3>
-          <p class="meta">Dynamic, rotating anti-spoof attendance QR code</p>
+          <p class="meta">Dynamic anti-spoof attendance QR code</p>
         </div>
         <button class="close-btn" on:click={closeQr} aria-label="Close QR modal">
           <Icon name="x" size={16} />
@@ -335,25 +342,42 @@
           <div class="expiry" class:expiry-warn={qrExpiry <= 10}>
             <Icon name="clock" size={14} />
             {#if qrExpiry > 0}
-              <span>Rotating in <strong>{qrExpiry}s</strong></span>
+              <span>Rotating dynamically in <strong>{qrExpiry}s</strong></span>
             {:else}
-              <span>Expired — generate a new token</span>
+              <span>Expired — generating new token</span>
             {/if}
+          </div>
+
+          <div class="qr-sec-info">
+            <div class="sec-item">
+              <Icon name="check" size={13} color="#16a34a" />
+              <span>Admin Host IP: <code>{qrAdminIp || '127.0.0.1'}</code></span>
+            </div>
+            <div class="sec-item">
+              <Icon name="smartphone" size={13} color="#0284c7" />
+              <span>Student Network Subnet & Device Bound</span>
+            </div>
           </div>
         {:else}
           <div class="qr-expired">
             <Icon name="clock" size={36} color="#94a3b8" />
-            <p>QR code expired</p>
+            <p>QR code refreshing…</p>
           </div>
         {/if}
       </div>
 
       <div class="qr-footer">
-        <button class="btn btn-primary full" on:click={refreshQr} disabled={qrGenerating}>
-          <Icon name="refresh" size={14} />
-          <span>{qrGenerating ? 'Generating…' : 'Refresh Dynamic QR'}</span>
-        </button>
-        <p class="hint">Tokens are cryptographically signed with short TTL and single-use validation nonce.</p>
+        <div class="modal-ctrl-row">
+          <button class="btn btn-primary full" on:click={refreshQr} disabled={qrGenerating}>
+            <Icon name="refresh" size={14} />
+            <span>{qrGenerating ? 'Generating…' : 'Rotate QR Now'}</span>
+          </button>
+        </div>
+        <label class="auto-rotate-check">
+          <input type="checkbox" bind:checked={autoRotate} />
+          <span>Auto-rotate continuously every 25s for projector</span>
+        </label>
+        <p class="hint">Tokens are cryptographically signed with admin network identity and single-use nonce.</p>
       </div>
     </div>
   </div>
@@ -404,8 +428,19 @@
     transition: all 0.15s; white-space: nowrap; color: #334155;
   }
   .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-  .btn-primary { background: #0f766e; color: white; border-color: #0f766e; }
-  .btn-primary:hover:not(:disabled) { background: #0b5c54; border-color: #0b5c54; }
+  .btn-primary {
+    background: linear-gradient(135deg, #32F000 0%, #0db872 30%, #0284c7 68%, #073B78 100%);
+    color: white;
+    border: none;
+    font-weight: 700;
+    box-shadow: 0 3px 12px rgba(7, 59, 120, 0.2);
+    text-shadow: 0 1px 2px rgba(7, 59, 120, 0.35);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #2bd000 0%, #0aa062 30%, #0274b0 68%, #052c5c 100%);
+    box-shadow: 0 4px 16px rgba(50, 240, 0, 0.35);
+    transform: translateY(-1px);
+  }
   .btn.ghost { background: #f8fafc; color: #0f766e; border-color: #ccfbf1; }
   .btn.ghost:hover { background: #f0fdfa; }
   .btn-qr { background: #0f172a; color: white; border-color: #0f172a; }
@@ -483,6 +518,21 @@
     color: #94a3b8; gap: 8px;
   }
   .qr-expired p { margin: 0; font-size: 13px; font-weight: 600; }
+
+  .qr-sec-info {
+    width: 100%; box-sizing: border-box; background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+    font-size: 11.5px; color: #334155;
+  }
+  .sec-item { display: flex; align-items: center; gap: 7px; }
+  .sec-item code { font-size: 11px; background: #e2e8f0; padding: 1px 5px; border-radius: 4px; }
+
+  .auto-rotate-check {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 12px; color: #475569; font-weight: 600; cursor: pointer;
+    margin: 4px 0;
+  }
+  .modal-ctrl-row { width: 100%; }
 
   .qr-footer { padding: 0 22px 22px; display: flex; flex-direction: column; gap: 8px; }
   .hint { font-size: 11px; color: #64748b; text-align: center; margin: 0; }

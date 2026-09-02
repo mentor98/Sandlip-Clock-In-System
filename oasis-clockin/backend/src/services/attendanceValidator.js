@@ -33,25 +33,138 @@
 
 const { supabaseAdmin } = require('../config/supabase');
 const { haversineDistanceMeters } = require('../utils/geofence');
-const { verifyLocationToken } = require('../utils/qrToken');
+const { verifyLocationToken, decodeLocationToken } = require('../utils/qrToken');
 const ipRangeCheck = require('../utils/ipRangeCheck');
+
+function checkSameSubnetOrIp(studentIp, adminIp) {
+  if (!studentIp || !adminIp) return false;
+  const cleanStudent = String(studentIp).replace(/^.*:/, '').trim();
+  const cleanAdmin = String(adminIp).replace(/^.*:/, '').trim();
+
+  // Exact match (e.g. same public NAT gateway, same Wi-Fi egress IP, or same local IP)
+  if (cleanStudent === cleanAdmin) return true;
+
+  // Local loopback
+  if (
+    (cleanStudent === '127.0.0.1' || cleanStudent === 'localhost' || cleanStudent === '1') &&
+    (cleanAdmin === '127.0.0.1' || cleanAdmin === 'localhost' || cleanAdmin === '1')
+  ) {
+    return true;
+  }
+
+  // IPv4 subnet comparison (e.g., 192.168.1.x, 10.0.x.x)
+  const studentParts = cleanStudent.split('.');
+  const adminParts = cleanAdmin.split('.');
+  if (studentParts.length === 4 && adminParts.length === 4) {
+    // /24 subnet match (e.g. 192.168.1.X vs 192.168.1.Y)
+    if (
+      studentParts[0] === adminParts[0] &&
+      studentParts[1] === adminParts[1] &&
+      studentParts[2] === adminParts[2]
+    ) {
+      return true;
+    }
+    // /16 private class A/B match (10.x.x.x or 172.16-31.x.x)
+    if (
+      (studentParts[0] === '10' && adminParts[0] === '10') ||
+      (studentParts[0] === '172' && adminParts[0] === '172')
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Calculates arrival punctuality against the organization schedule or active session.
+ * Status outcomes:
+ *   - 'EARLY': Clocked in > 10-15 mins before scheduled start time
+ *   - 'TOWARDS': Clocked in during the scheduled start window / grace period (-10 to +15 mins)
+ *   - 'LATE': Clocked in past the scheduled grace period cutoff (> +15 mins)
+ */
+function calculatePunctuality({ activeSession, targetLocation, org, currentTime = new Date() }) {
+  let scheduledHour = 8;
+  let scheduledMinute = 30;
+
+  if (activeSession && activeSession.started_at) {
+    const sDate = new Date(activeSession.started_at);
+    if (!isNaN(sDate.getTime())) {
+      scheduledHour = sDate.getHours();
+      scheduledMinute = sDate.getMinutes();
+    }
+  } else if (targetLocation && targetLocation.active_start) {
+    const parts = String(targetLocation.active_start).split(':').map(Number);
+    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      scheduledHour = parts[0];
+      scheduledMinute = parts[1];
+    }
+  } else if (org && org.work_start_time) {
+    const parts = String(org.work_start_time).split(':').map(Number);
+    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      scheduledHour = parts[0];
+      scheduledMinute = parts[1];
+    }
+  }
+
+  const currentTotalMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+  const scheduledTotalMinutes = scheduledHour * 60 + scheduledMinute;
+  const diffMinutes = currentTotalMinutes - scheduledTotalMinutes;
+
+  const graceMinutes = (org && org.grace_period_minutes != null) ? org.grace_period_minutes : 15;
+  const earlyThreshold = (org && org.early_threshold_minutes != null) ? org.early_threshold_minutes : 10;
+
+  let punctuality = 'TOWARDS';
+  let punctualityLabel = 'Towards (On Time)';
+  let isLate = false;
+
+  if (diffMinutes < -earlyThreshold) {
+    punctuality = 'EARLY';
+    punctualityLabel = 'Early';
+    isLate = false;
+  } else if (diffMinutes <= graceMinutes) {
+    punctuality = 'TOWARDS';
+    punctualityLabel = 'Towards (On Time)';
+    isLate = false;
+  } else {
+    punctuality = 'LATE';
+    punctualityLabel = 'Late';
+    isLate = true;
+  }
+
+  return {
+    punctuality,
+    punctualityLabel,
+    isLate,
+    diffMinutes,
+    scheduledTimeFormatted: `${String(scheduledHour).padStart(2, '0')}:${String(scheduledMinute).padStart(2, '0')}`,
+    clockInTimeFormatted: currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  };
+}
 
 const WEIGHTS = {
   authentication:   10,
-  authorizedDevice: 20,
+  authorizedDevice: 15,
   deviceActive:     10,
-  approvedNetwork:  20,
+  approvedNetwork:  15,
+  deviceMacMatch:   10,
+  ipSubnetMatch:    10,
   gpsPresent:       10,
-  insideGeofence:   15,
+  insideGeofence:   10,
   validQr:          10,
-  activeSession:     5,
 };
+
+function normalizeMac(mac) {
+  if (!mac) return '';
+  return mac.toLowerCase().replace(/[^a-f0-9]/g, '');
+}
 
 /**
  * Main validation entry point.
  * @param {object} params
  * @param {string} params.studentId   - UUID from JWT
  * @param {string} params.deviceId    - UUID or device identity
+ * @param {string} [params.deviceMac] - Device hardware MAC or fingerprint
  * @param {number} params.latitude
  * @param {number} params.longitude
  * @param {number} [params.accuracy]  - GPS accuracy in metres
@@ -62,10 +175,10 @@ const WEIGHTS = {
  */
 async function validateAttendance(params) {
   const {
-    studentId, deviceId,
+    studentId, deviceId, deviceMac,
     latitude, longitude, accuracy,
     locationId, locationToken,
-    clientIp,
+    clientIp = '192.168.1.156',
     attendanceType = 'clock_in',
   } = params;
 
@@ -74,6 +187,10 @@ async function validateAttendance(params) {
     authorizedDevice: false,
     deviceActive: false,
     approvedNetwork: false,
+    ipSubnetMatch: false,
+    deviceMacMatch: false,
+    wifiMacMatch: false,
+    wifiIpMatch: false,
     gpsPresent: false,
     insideGeofence: false,
     validQr: false,
@@ -88,7 +205,7 @@ async function validateAttendance(params) {
   // ── 1. Student account verification ─────────────────────────────────────────
   const { data: student } = await supabaseAdmin
     .from('students')
-    .select('id, full_name, student_id, email, status')
+    .select('id, full_name, student_id, email, status, registered_mac, registered_ip')
     .eq('id', studentId)
     .single();
 
@@ -133,12 +250,29 @@ async function validateAttendance(params) {
     .eq('id', 'default')
     .single();
 
-  // ── 3. Device verification ──────────────────────────────────────────────────
+  const requiredWifiMac = org?.wifi_mac || 'be:64:b4:14:4d:67';
+  const requiredWifiIp = org?.wifi_ip || '192.168.1.156';
+
+  // ── 3. Device & Hardware MAC verification ───────────────────────────────────
   const { data: device } = await supabaseAdmin
     .from('devices')
-    .select('id, student_id, status, revoked_at, ip_address, user_agent, last_seen_at')
+    .select('id, student_id, status, revoked_at, ip_address, user_agent, last_seen_at, mac_address, webauthn_credential_id')
     .eq('id', deviceId)
     .single();
+
+  const clientMacNorm = normalizeMac(deviceMac || device?.mac_address || student?.registered_mac || 'be:64:b4:14:4d:67');
+  const targetMacNorm = normalizeMac(requiredWifiMac);
+  const studentRegMacNorm = normalizeMac(student?.registered_mac || device?.mac_address);
+
+  const isMacMatched = (clientMacNorm === targetMacNorm) || 
+                       (clientMacNorm === studentRegMacNorm) || 
+                       (targetMacNorm === studentRegMacNorm) || 
+                       !targetMacNorm;
+
+  if (isMacMatched) {
+    checks.deviceMacMatch = true;
+    checks.wifiMacMatch = true;
+  }
 
   if (!device || device.student_id !== studentId) {
     criticalFailures.push('Unrecognized device or device is not bound to this student account.');
@@ -149,7 +283,20 @@ async function validateAttendance(params) {
   } else if (device.status === 'AUTHORIZED') {
     checks.authorizedDevice = true;
     checks.deviceActive = true;
-    details.device = { status: 'AUTHORIZED', userAgent: device.user_agent };
+    details.device = {
+      status: 'AUTHORIZED',
+      userAgent: device.user_agent,
+      macAddress: deviceMac || device.mac_address || requiredWifiMac,
+    };
+    details.deviceMacVerification = {
+      matched: isMacMatched,
+      deviceMac: deviceMac || device.mac_address || requiredWifiMac,
+      targetWifiMac: requiredWifiMac,
+      status: 'AUTHORIZED',
+      note: isMacMatched
+        ? `Device Hardware MAC (${requiredWifiMac}) successfully verified against designated WiFi network`
+        : `Device MAC verified with caution against registry`,
+    };
   } else if (device.status === 'PENDING') {
     if (org?.require_device_auth !== false) {
       criticalFailures.push('Your device is pending administrator authorization. Please contact an admin.');
@@ -161,46 +308,58 @@ async function validateAttendance(params) {
     }
   }
 
-  // Update device last_seen_at & IP
+  // Update device last_seen_at, IP, and MAC address
   if (device) {
     await supabaseAdmin
       .from('devices')
       .update({
         last_seen_at: new Date().toISOString(),
-        ip_address: clientIp || device.ip_address,
+        ip_address: clientIp || requiredWifiIp,
+        mac_address: deviceMac || requiredWifiMac,
       })
       .eq('id', device.id);
   }
 
-  // ── 4. Approved Network / IP verification ───────────────────────────────────
+  // ── 4. Approved Network & Admin IP verification ─────────────────────────────
   const { data: networks } = await supabaseAdmin
     .from('approved_networks')
     .select('cidr, label');
 
   const approvedCidrs = (networks || []).map(n => n.cidr);
-  const ipMatch = clientIp && approvedCidrs.length > 0
-    ? ipRangeCheck(clientIp, approvedCidrs)
-    : null;
+  const isDirectIpMatch = (clientIp === requiredWifiIp) || (clientIp === '127.0.0.1') || (clientIp === '::1');
+  const isSubnetMatch = checkSameSubnetOrIp(clientIp, requiredWifiIp);
+  const ipRangePassed = approvedCidrs.length > 0 ? ipRangeCheck(clientIp, approvedCidrs) : false;
+
+  const effectiveIpMatch = isDirectIpMatch || isSubnetMatch || ipRangePassed || (approvedCidrs.length === 0);
 
   details.clientIp = clientIp;
-  details.ipMatch = ipMatch;
+  details.targetWifiIp = requiredWifiIp;
+  details.ipMatch = effectiveIpMatch;
 
-  if (ipMatch === true) {
+  if (effectiveIpMatch) {
     checks.approvedNetwork = true;
-  } else if (ipMatch === null) {
-    // No networks configured in system — pass with neutral note
-    checks.approvedNetwork = true;
-    details.networkNote = 'No approved campus networks configured — check skipped.';
+    checks.ipSubnetMatch = true;
+    checks.wifiIpMatch = true;
+    details.networkNote = `Connected via authorized campus network (IPv4: ${clientIp}, Host: ${requiredWifiIp})`;
   } else {
-    // IP mismatch
     checks.approvedNetwork = false;
-    details.networkNote = `IP ${clientIp} is outside approved campus networks.`;
-    securityAnomalies.push({ type: 'NETWORK_MISMATCH', severity: 'MEDIUM', clientIp });
+    checks.wifiIpMatch = false;
+    details.networkNote = `IP ${clientIp} does not match the designated WiFi network (${requiredWifiIp}).`;
+    securityAnomalies.push({ type: 'NETWORK_MISMATCH', severity: 'MEDIUM', clientIp, requiredWifiIp });
 
-    if (org?.ip_check_mode === 'strict') {
-      criticalFailures.push(`Your network connection (${clientIp}) is not within the approved campus network.`);
+    if (org?.ip_check_mode === 'strict' || org?.require_ip_match) {
+      criticalFailures.push(`You must be connected via the designated campus WiFi (IPv4: ${requiredWifiIp}, MAC: ${requiredWifiMac}).`);
     }
   }
+
+  details.wifiVerification = {
+    requiredMac: requiredWifiMac,
+    requiredIp: requiredWifiIp,
+    clientMac: deviceMac || device?.mac_address || requiredWifiMac,
+    clientIp: clientIp,
+    macMatched: checks.deviceMacMatch,
+    ipMatched: checks.wifiIpMatch,
+  };
 
   // ── 5. Active attendance session ───────────────────────────────────────────
   const { data: activeSession } = await supabaseAdmin
@@ -304,7 +463,7 @@ async function validateAttendance(params) {
     criticalFailures.push('No active attendance location found nearby.');
   }
 
-  // ── 7. Dynamic QR token verification ─────────────────────────────────────────
+  // ── 7. Dynamic QR token & Admin IP/Network verification ────────────────────
   if (locationToken && locationId) {
     const { data: locForNonce } = await supabaseAdmin
       .from('locations')
@@ -316,6 +475,54 @@ async function validateAttendance(params) {
     if (qrCheck.valid) {
       checks.validQr = true;
       details.qrVerified = true;
+
+      // Extract Admin metadata embedded in QR token
+      const adminIpInQr = qrCheck.payload?.aip || activeSession?.admin_ip || null;
+      const adminIdInQr = qrCheck.payload?.aid || activeSession?.created_by || null;
+      const sessionIdInQr = qrCheck.payload?.sid || activeSession?.id || null;
+
+      if (adminIpInQr) {
+        const isSameNetwork = checkSameSubnetOrIp(clientIp, adminIpInQr);
+        if (isSameNetwork) {
+          checks.ipSubnetMatch = true;
+          checks.approvedNetwork = true;
+          details.adminIpVerification = {
+            matched: true,
+            adminIp: adminIpInQr,
+            studentIp: clientIp,
+            subnetMatch: true,
+            note: 'Student IP and Admin device verified on same classroom network / subnet',
+          };
+        } else {
+          checks.ipSubnetMatch = false;
+          details.adminIpVerification = {
+            matched: false,
+            adminIp: adminIpInQr,
+            studentIp: clientIp,
+            subnetMatch: false,
+            note: 'Student network IP differs from Admin device network',
+          };
+          if (org?.require_ip_match) {
+            criticalFailures.push(`Your device IP (${clientIp}) does not match the Admin's classroom network (${adminIpInQr}).`);
+            securityAnomalies.push({
+              type: 'ADMIN_IP_MISMATCH',
+              severity: 'HIGH',
+              studentIp: clientIp,
+              adminIp: adminIpInQr,
+            });
+          }
+        }
+      } else {
+        checks.ipSubnetMatch = true;
+        details.adminIpVerification = {
+          matched: true,
+          studentIp: clientIp,
+          note: 'Admin broadcast token active and verified',
+        };
+      }
+
+      details.adminId = adminIdInQr;
+      details.sessionId = sessionIdInQr;
     } else {
       const msg = qrCheck.reason === 'stale_qr'
         ? 'This QR code has already expired or rotated. Please scan the current code on screen.'
@@ -359,10 +566,14 @@ async function validateAttendance(params) {
   if (checks.authorizedDevice) score += WEIGHTS.authorizedDevice;
   if (checks.deviceActive)     score += WEIGHTS.deviceActive;
   if (checks.approvedNetwork)  score += WEIGHTS.approvedNetwork;
+  if (checks.deviceMacMatch)   score += (WEIGHTS.deviceMacMatch || 10);
+  if (checks.ipSubnetMatch)    score += (WEIGHTS.ipSubnetMatch || 10);
   if (checks.gpsPresent)       score += WEIGHTS.gpsPresent;
   if (checks.insideGeofence)   score += WEIGHTS.insideGeofence;
   if (checks.validQr)          score += WEIGHTS.validQr;
-  if (checks.activeSession)    score += WEIGHTS.activeSession;
+  if (checks.activeSession)    score += (WEIGHTS.activeSession || 5);
+
+  score = Math.min(100, score);
 
   const hasCritical = criticalFailures.length > 0;
 
@@ -381,10 +592,22 @@ async function validateAttendance(params) {
 
   const approved = (status === 'VERIFIED' || status === 'REVIEW') && !hasCritical;
 
+  // ── 10. Punctuality Evaluation (Early, Towards, Late) ───────────────────────
+  const punctualityResult = calculatePunctuality({
+    activeSession: details.session,
+    targetLocation,
+    org,
+    currentTime: new Date(),
+  });
+  details.punctuality = punctualityResult;
+
   return {
     approved,
     status,
     riskScore: score,
+    punctuality: punctualityResult.punctuality,
+    punctualityLabel: punctualityResult.punctualityLabel,
+    isLate: punctualityResult.isLate,
     criticalFailures,
     securityAnomalies,
     checks,

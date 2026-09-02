@@ -18,9 +18,16 @@
   let attendanceRadius = 150;
   let requireGps = true;
   let requireDeviceAuth = true;
-  let requireIpMatch = false;
+  let requireIpMatch = true;
+  let requireWifiMatch = true;
   let requireQr = false;
   let ipCheckMode = 'warn';
+  let workStartTime = '08:00';
+  let gracePeriodMinutes = 15;
+  let earlyThresholdMinutes = 15;
+  let wifiMac = 'be:64:b4:14:4d:67';
+  let wifiIp = '192.168.1.156';
+  let wifiSsid = 'Oasis-Campus-WiFi';
 
   let mapElement;
   let map = null;
@@ -102,9 +109,16 @@
         attendanceRadius = config.attendance_radius_m || 150;
         requireGps = config.require_gps ?? true;
         requireDeviceAuth = config.require_device_auth ?? true;
-        requireIpMatch = config.require_ip_match ?? false;
+        requireIpMatch = config.require_ip_match ?? true;
+        requireWifiMatch = config.require_wifi_match ?? true;
         requireQr = config.require_qr ?? false;
         ipCheckMode = config.ip_check_mode || 'warn';
+        workStartTime = config.work_start_time || '08:00';
+        gracePeriodMinutes = config.grace_period_minutes != null ? config.grace_period_minutes : 15;
+        earlyThresholdMinutes = config.early_threshold_minutes != null ? config.early_threshold_minutes : 15;
+        wifiMac = config.wifi_mac || 'be:64:b4:14:4d:67';
+        wifiIp = config.wifi_ip || '192.168.1.156';
+        wifiSsid = config.wifi_ssid || 'Oasis-Campus-WiFi';
 
         if (map) {
           updateMapPosition(latitude, longitude, attendanceRadius);
@@ -142,11 +156,18 @@
           require_gps: requireGps,
           require_device_auth: requireDeviceAuth,
           require_ip_match: requireIpMatch,
+          require_wifi_match: requireWifiMatch,
           require_qr: requireQr,
           ip_check_mode: ipCheckMode,
+          work_start_time: workStartTime,
+          grace_period_minutes: parseInt(gracePeriodMinutes, 10),
+          early_threshold_minutes: parseInt(earlyThresholdMinutes, 10),
+          wifi_mac: wifiMac,
+          wifi_ip: wifiIp,
+          wifi_ssid: wifiSsid,
         },
       });
-      successMsg = 'Organization configuration and geofence saved successfully.';
+      successMsg = 'Organization configuration, designated WiFi network, work schedule, and geofence saved successfully.';
       load();
     } catch (e) { error = e.message; }
     finally { loading = false; }
@@ -268,6 +289,13 @@
             <p class="toggle-desc">Validates connection from approved institutional subnets</p>
           </div>
         </label>
+        <label class="toggle">
+          <input type="checkbox" bind:checked={requireWifiMatch} />
+          <div class="toggle-content">
+            <strong>Require Designated WiFi Gateway (MAC &amp; IP)</strong>
+            <p class="toggle-desc">Strictly validates connection to designated campus AP hardware</p>
+          </div>
+        </label>
       </div>
 
       <div class="field">
@@ -279,6 +307,30 @@
         </select>
       </div>
 
+      <h4 class="sec-heading">Work Schedule & Punctuality Policy</h4>
+      <div class="schedule-grid">
+        <div class="field">
+          <label for="org-start-time">Official Start Time (Clock-in)</label>
+          <input id="org-start-time" type="time" bind:value={workStartTime} />
+          <p class="hint">Standard expected arrival time</p>
+        </div>
+        <div class="field">
+          <label for="org-grace">Towards/Grace Window (Minutes)</label>
+          <input id="org-grace" type="number" min="0" max="120" bind:value={gracePeriodMinutes} />
+          <p class="hint">Up to +{gracePeriodMinutes}m = TOWARDS / On-Time</p>
+        </div>
+        <div class="field">
+          <label for="org-early">Early Arrival Threshold (Minutes)</label>
+          <input id="org-early" type="number" min="0" max="180" bind:value={earlyThresholdMinutes} />
+          <p class="hint">&gt; {earlyThresholdMinutes}m before start = EARLY</p>
+        </div>
+      </div>
+      <div class="punct-preview-note">
+        <span class="punct-pill-sm punct-early">EARLY: &gt; {earlyThresholdMinutes}m prior</span>
+        <span class="punct-pill-sm punct-towards">TOWARDS: -{earlyThresholdMinutes}m to +{gracePeriodMinutes}m</span>
+        <span class="punct-pill-sm punct-late">LATE: &gt; +{gracePeriodMinutes}m after start</span>
+      </div>
+
       <button class="btn btn-primary" on:click={save} disabled={loading}>
         <Icon name="check" size={14} />
         <span>{loading ? 'Saving…' : 'Save Organization Settings'}</span>
@@ -288,8 +340,40 @@
     </div>
   </div>
 
-  <!-- Right column: Approved networks & Summary -->
+  <!-- Right column: Approved networks & Designated WiFi Gateway -->
   <div class="col">
+    <!-- Designated Campus WiFi Gateway -->
+    <div class="card wifi-gateway-card">
+      <div class="title-with-icon">
+        <Icon name="shield" size={18} color="#0f766e" />
+        <h3>Designated Campus WiFi Gateway</h3>
+      </div>
+      <p class="hint-block">Students scanning QR codes must be connected through this authorized hardware WiFi router &amp; IPv4 address gateway.</p>
+
+      <div class="wifi-fields">
+        <div class="field">
+          <label for="wifi-mac">Designated WiFi MAC Address *</label>
+          <input id="wifi-mac" bind:value={wifiMac} placeholder="be:64:b4:14:4d:67" />
+          <span class="field-hint">Binds scan validation to Access Point BSSID/MAC</span>
+        </div>
+        <div class="field">
+          <label for="wifi-ip">Designated IPv4 Address *</label>
+          <input id="wifi-ip" bind:value={wifiIp} placeholder="192.168.1.156" />
+          <span class="field-hint">Target IPv4 network host address</span>
+        </div>
+        <div class="field">
+          <label for="wifi-ssid">Campus WiFi SSID</label>
+          <input id="wifi-ssid" bind:value={wifiSsid} placeholder="Oasis-Campus-WiFi" />
+        </div>
+      </div>
+
+      <div class="wifi-status-badge">
+        <span class="dot-online"></span>
+        <span>Gateway Configured: <code>{wifiMac}</code> · <code>{wifiIp}</code></span>
+      </div>
+    </div>
+
+    <!-- Approved campus subnets -->
     <div class="card">
       <div class="title-with-icon">
         <Icon name="wifi" size={18} color="#0f766e" />
@@ -428,7 +512,43 @@
     display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px;
   }
 
+  .schedule-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+
+  .punct-preview-note {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .punct-pill-sm {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .punct-pill-sm.punct-early { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+  .punct-pill-sm.punct-towards { background: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc; }
+  .punct-pill-sm.punct-late { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+
   .notice { padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; }
   .notice.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
   .notice.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+  .wifi-gateway-card { border-left: 4px solid #0f766e; background: linear-gradient(180deg, #f0fdfa 0%, #ffffff 100px); }
+  .wifi-fields { display: flex; flex-direction: column; gap: 12px; }
+  .field-hint { font-size: 11px; color: #64748b; font-family: monospace; }
+  .wifi-status-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 12px; background: #ecfdf5; border: 1px solid #a7f3d0;
+    border-radius: 8px; font-size: 12px; font-weight: 600; color: #065f46;
+  }
+  .dot-online { width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block; box-shadow: 0 0 6px #10b981; }
 </style>

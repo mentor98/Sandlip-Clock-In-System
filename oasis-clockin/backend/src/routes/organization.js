@@ -22,8 +22,10 @@ router.put('/', async (req, res) => {
   const {
     name, address,
     latitude, longitude, attendance_radius_m,
-    require_ip_match, require_gps, require_qr, require_device_auth,
+    require_ip_match, require_wifi_match, require_gps, require_qr, require_device_auth,
     ip_check_mode, // 'strict' | 'warn' | 'off'
+    work_start_time, grace_period_minutes, early_threshold_minutes,
+    wifi_mac, wifi_ip, wifi_ssid,
     status,
   } = req.body || {};
 
@@ -36,11 +38,18 @@ router.put('/', async (req, res) => {
     latitude: latitude != null ? parseFloat(latitude) : null,
     longitude: longitude != null ? parseFloat(longitude) : null,
     attendance_radius_m: attendance_radius_m ? parseInt(attendance_radius_m) : 150,
-    require_ip_match: require_ip_match ?? false,
+    require_ip_match: require_ip_match ?? true,
+    require_wifi_match: require_wifi_match ?? true,
     require_gps: require_gps ?? true,
     require_qr: require_qr ?? false,
     require_device_auth: require_device_auth ?? true,
     ip_check_mode: ip_check_mode || 'warn',
+    work_start_time: work_start_time || '08:00',
+    grace_period_minutes: grace_period_minutes != null ? parseInt(grace_period_minutes, 10) : 15,
+    early_threshold_minutes: early_threshold_minutes != null ? parseInt(early_threshold_minutes, 10) : 15,
+    wifi_mac: wifi_mac || 'be:64:b4:14:4d:67',
+    wifi_ip: wifi_ip || '192.168.1.156',
+    wifi_ssid: wifi_ssid || 'Oasis-Campus-WiFi',
     status: status || 'active',
     updated_at: new Date().toISOString(),
   };

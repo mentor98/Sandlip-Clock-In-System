@@ -21,7 +21,7 @@ async function logAudit(studentId, eventType, detail) {
 function makeHandler(attendanceType) {
   return async (req, res) => {
     const studentId = req.user.sub;
-    const { latitude, longitude, accuracy, device_id, location_id, location_token } = req.body || {};
+    const { latitude, longitude, accuracy, device_id, device_mac, location_id, location_token } = req.body || {};
     const clientIp = req.ip || req.headers['x-forwarded-for'] || null;
 
     if (latitude == null || longitude == null || !device_id) {
@@ -36,6 +36,7 @@ function makeHandler(attendanceType) {
     const result = await validateAttendance({
       studentId,
       deviceId: device_id,
+      deviceMac: device_mac,
       latitude,
       longitude,
       accuracy,
@@ -82,9 +83,12 @@ function makeHandler(attendanceType) {
         latitude,
         longitude,
         device_id,
+        device_mac: device_mac || null,
         session_id: result.activeSession?.id || null,
         risk_score: result.riskScore,
         verification_status: result.status,
+        punctuality: result.punctuality || 'EARLY',
+        is_late: result.isLate || false,
         ip_address: clientIp,
         gps_accuracy: accuracy || null,
       })
@@ -108,6 +112,7 @@ function makeHandler(attendanceType) {
       location: result.targetLocation?.name,
       riskScore: result.riskScore,
       status: result.status,
+      punctuality: result.punctuality,
       checks: result.checks,
     });
 
@@ -115,6 +120,9 @@ function makeHandler(attendanceType) {
       success: true,
       status: result.status,
       riskScore: result.riskScore,
+      punctuality: result.punctuality,
+      punctualityLabel: result.punctualityLabel,
+      isLate: result.isLate,
       location_name: result.targetLocation?.name,
       distanceM: result.details.location?.distanceM,
       checks: result.checks,

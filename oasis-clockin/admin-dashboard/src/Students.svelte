@@ -220,7 +220,8 @@
                 <tr>
                   <th>Platform</th>
                   <th>Status</th>
-                  <th>IP Address</th>
+                  <th>Device MAC</th>
+                  <th>Network IP</th>
                   <th>Registered</th>
                   <th>Last Active</th>
                 </tr>
@@ -238,7 +239,10 @@
                     <td>
                       <span class="pill pill-{d.status?.toLowerCase() || 'pending'}">{d.status}</span>
                     </td>
-                    <td class="mono">{d.ip_address || '—'}</td>
+                    <td class="mono">
+                      <code>{d.mac_address || deviceModalStudent.registered_mac || 'MAC-PENDING'}</code>
+                    </td>
+                    <td class="mono">{d.ip_address || deviceModalStudent.registered_ip || '—'}</td>
                     <td class="muted">{formatDate(d.registered_at)}</td>
                     <td class="muted">{formatDate(d.last_seen_at)}</td>
                   </tr>
@@ -269,7 +273,8 @@
           <tr>
             <th>Student</th>
             <th>Matric ID</th>
-            <th>Email</th>
+            <th>Registered Device MAC</th>
+            <th>Registered IP</th>
             <th>Device Auth</th>
             <th>Account Status</th>
             <th>Actions</th>
@@ -280,7 +285,12 @@
             <tr class:dimmed={s.status === 'suspended'}>
               <td class="bold">{s.full_name}</td>
               <td><code>{s.student_id}</code></td>
-              <td>{s.email}</td>
+              <td class="mono">
+                <code>{s.registered_mac || (s.devices?.[0]?.mac_address) || '—'}</code>
+              </td>
+              <td class="mono">
+                <span class="ip-chip">{s.registered_ip || (s.devices?.[0]?.ip_address) || '—'}</span>
+              </td>
               <td>
                 <button class="device-badge-btn" on:click={() => (deviceModalStudent = s)}>
                   <Icon name="smartphone" size={13} />
@@ -335,17 +345,34 @@
     border: none; outline: none; padding: 10px 0; width: 100%;
     font-size: 13.5px; color: #0f172a; background: transparent;
   }
-  .search-input-wrap:focus-within { border-color: #0f766e; box-shadow: 0 0 0 3px rgba(15,118,110,0.12); }
+  .search-input-wrap:focus-within { border-color: #0284c7; box-shadow: 0 0 0 3px rgba(50, 240, 0, 0.22); }
 
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 7px;
     padding: 9px 16px; border-radius: 8px; border: none;
-    cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.15s;
+    cursor: pointer; font-size: 13px; font-weight: 700; transition: all 0.15s;
   }
-  .btn-primary { background: #0f766e; color: white; }
-  .btn-primary:hover:not(:disabled) { background: #0b5c54; }
-  .btn-teal { background: #0f766e; color: white; }
-  .btn-teal:hover { background: #0b5c54; }
+  .btn-primary {
+    background: linear-gradient(135deg, #32F000 0%, #0db872 30%, #0284c7 68%, #073B78 100%);
+    color: #ffffff;
+    box-shadow: 0 3px 12px rgba(7, 59, 120, 0.2);
+    text-shadow: 0 1px 2px rgba(7, 59, 120, 0.35);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #2bd000 0%, #0aa062 30%, #0274b0 68%, #052c5c 100%);
+    box-shadow: 0 4px 16px rgba(50, 240, 0, 0.35);
+    transform: translateY(-1px);
+  }
+  .btn-teal {
+    background: linear-gradient(135deg, #32F000 0%, #0db872 30%, #0284c7 68%, #073B78 100%);
+    color: #ffffff;
+    box-shadow: 0 3px 12px rgba(7, 59, 120, 0.2);
+    text-shadow: 0 1px 2px rgba(7, 59, 120, 0.35);
+  }
+  .btn-teal:hover {
+    background: linear-gradient(135deg, #2bd000 0%, #0aa062 30%, #0274b0 68%, #052c5c 100%);
+    box-shadow: 0 4px 16px rgba(50, 240, 0, 0.35);
+  }
 
   .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 6px; }
   .btn.ghost { background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
@@ -427,6 +454,16 @@
   .platform-chip {
     display: inline-flex; align-items: center; gap: 6px;
     font-size: 12.5px; font-weight: 500; color: #334155;
+  }
+
+  .ip-chip {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #0f172a;
+    font-size: 11.5px;
   }
 
   .pill {

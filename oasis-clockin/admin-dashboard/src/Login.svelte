@@ -34,18 +34,9 @@
   function handleKey(e, fn) { if (e.key === 'Enter') fn(); }
 </script>
 
-<main class="login-split-page">
-  <!-- Left Side: Plain image without container -->
-  <section class="left-image-panel">
-    <img
-      src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788353121/ChatGPT_Image_Sep_2_2026_01_44_48_PM_nykarx.png"
-      alt="Oasis ClockIn Attendance Platform"
-      class="hero-full-img"
-    />
-  </section>
-
-  <!-- Right Side: Inputs & Sign In Form -->
-  <section class="right-form-panel">
+<main class="login-center-page">
+  <!-- Centered Sign In Form -->
+  <section class="form-container">
     <div class="form-card">
       <div class="brand-header">
         <div class="logo-box">
@@ -96,11 +87,6 @@
         <span>{loading ? 'Authenticating…' : 'Sign in to Dashboard'}</span>
       </button>
 
-      <div class="credentials-hint">
-        <span>Default credentials:</span>
-        <code>ADMIN-001</code> / <code>admin12345</code>
-      </div>
-
       {#if error}
         <div class="error-notice" role="alert">
           <Icon name="alert-triangle" size={15} color="#dc2626" />
@@ -119,51 +105,44 @@
 </main>
 
 <style>
-  .login-split-page {
+  .login-center-page {
     min-height: 100vh;
     display: flex;
+    align-items: center;
+    justify-content: center;
     background: #f8fafc;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     margin: 0;
-    padding: 0;
+    padding: 32px 20px;
+    box-sizing: border-box;
   }
 
-  .left-image-panel {
-    flex: 1.1;
-    min-height: 100vh;
-    background: #020b10;
-    overflow: hidden;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .hero-full-img {
+  .form-container {
     width: 100%;
-    height: 100%;
-    min-height: 100vh;
-    object-fit: cover;
-    object-position: center;
-    display: block;
-  }
-
-  .right-form-panel {
-    flex: 1;
-    min-height: 100vh;
+    max-width: 440px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 40px 48px;
-    background: #ffffff;
     box-sizing: border-box;
   }
 
   .form-card {
     width: 100%;
-    max-width: 420px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 36px 32px;
+    box-shadow: 0 4px 20px rgba(7, 59, 120, 0.08);
     display: flex;
     flex-direction: column;
+    position: relative;
+  }
+  .form-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 24px; right: 24px; height: 3px;
+    background: linear-gradient(90deg, #32F000 0%, #0db872 30%, #0284c7 68%, #073B78 100%);
+    border-radius: 3px 3px 0 0;
   }
 
   .brand-header {
@@ -177,11 +156,11 @@
     width: 48px;
     height: 48px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+    background: linear-gradient(135deg, #32F000 0%, #0db872 32%, #0284c7 68%, #073B78 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 14px rgba(15, 118, 110, 0.3);
+    box-shadow: 0 4px 16px rgba(50, 240, 0, 0.35);
     flex-shrink: 0;
   }
 
@@ -189,7 +168,7 @@
     margin: 0;
     font-size: 20px;
     font-weight: 800;
-    color: #0f172a;
+    color: #071527;
     letter-spacing: -0.02em;
   }
 
@@ -206,8 +185,8 @@
 
   .welcome-text h2 {
     font-size: 24px;
-    font-weight: 700;
-    color: #0f172a;
+    font-weight: 800;
+    color: #071527;
     margin: 0 0 6px;
     letter-spacing: -0.02em;
   }
@@ -228,8 +207,8 @@
 
   label {
     font-size: 12px;
-    font-weight: 600;
-    color: #475569;
+    font-weight: 700;
+    color: #334155;
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -246,8 +225,8 @@
   }
 
   .input-wrap:focus-within {
-    border-color: #0f766e;
-    box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+    border-color: #0284c7;
+    box-shadow: 0 0 0 3px rgba(50, 240, 0, 0.22);
   }
 
   input {
@@ -256,7 +235,7 @@
     outline: none;
     padding: 12px 0;
     font-size: 14.5px;
-    color: #0f172a;
+    color: #071527;
     background: transparent;
   }
 
@@ -264,22 +243,26 @@
     width: 100%;
     margin-top: 8px;
     padding: 13px 18px;
-    background: #0f766e;
-    color: white;
+    background: linear-gradient(135deg, #32F000 0%, #0db872 30%, #0284c7 68%, #073B78 100%);
+    color: #ffffff;
     border: none;
     border-radius: 10px;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 15px;
     cursor: pointer;
-    transition: background 0.15s, transform 0.05s;
+    transition: all 0.15s ease, transform 0.05s;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 10px;
+    box-shadow: 0 4px 16px rgba(7, 59, 120, 0.25);
+    text-shadow: 0 1px 2px rgba(7, 59, 120, 0.4);
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: #0d635c;
+    background: linear-gradient(135deg, #2bd000 0%, #0aa062 30%, #0274b0 68%, #052c5c 100%);
+    box-shadow: 0 6px 22px rgba(50, 240, 0, 0.35);
+    transform: translateY(-1px);
   }
 
   .btn-primary:active:not(:disabled) {
@@ -289,31 +272,6 @@
   .btn-primary:disabled {
     opacity: 0.65;
     cursor: not-allowed;
-  }
-
-  .credentials-hint {
-    margin-top: 16px;
-    font-size: 12px;
-    color: #64748b;
-    text-align: center;
-    background: #f8fafc;
-    padding: 10px 14px;
-    border-radius: 8px;
-    border: 1px solid #e2e8f0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .credentials-hint code {
-    background: #f1f5f9;
-    padding: 2px 8px;
-    border-radius: 4px;
-    color: #0f172a;
-    font-weight: 700;
-    border: 1px solid #e2e8f0;
   }
 
   .error-notice {
@@ -343,21 +301,22 @@
     justify-content: center;
     gap: 10px;
     font-size: 13.5px;
-    color: #0f766e;
-    font-weight: 600;
+    color: #073B78;
+    font-weight: 700;
     text-decoration: none;
     padding: 11px 16px;
     border-radius: 10px;
-    background: #f0fdfa;
-    border: 1px solid #ccfbf1;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
     width: 100%;
     box-sizing: border-box;
     transition: all 0.15s;
   }
 
   .student-switch-btn:hover {
-    background: #ccfbf1;
-    color: #115e59;
+    background: #f0fdf4;
+    border-color: #32F000;
+    color: #15803d;
   }
 
   @media (max-width: 900px) {
@@ -365,13 +324,16 @@
       flex-direction: column;
     }
     .left-image-panel {
-      min-height: 240px;
-      max-height: 320px;
+      min-height: auto;
+      max-height: none;
+      padding: 24px 20px;
+      border-right: none;
+      border-bottom: 1px solid #e2e8f0;
       flex: none;
     }
     .hero-full-img {
-      min-height: 240px;
-      max-height: 320px;
+      max-height: 200px;
+      max-width: 260px;
     }
     .right-form-panel {
       padding: 32px 24px;

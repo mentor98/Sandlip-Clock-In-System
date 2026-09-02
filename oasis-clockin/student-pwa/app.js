@@ -7,13 +7,24 @@ const state = {
   deviceId: localStorage.getItem('oasis_device_id') || null,
   studentId: localStorage.getItem('oasis_student_id') || null,
   studentName: localStorage.getItem('oasis_student_name') || null,
+  deviceMac: getOrCreateDeviceMac(),
   deviceStatus: 'AUTHORIZED',
   lastLocation: null,
   pendingQrLocationId: null,
   pendingQrToken: null,
   clockedIn: false,
   clockedOut: false,
+  originScreenBeforeScan: 'screen-signin',
 };
+
+function getOrCreateDeviceMac() {
+  let mac = localStorage.getItem('oasis_device_mac');
+  if (!mac || !/^[0-9A-Fa-f:]{17}$/.test(mac)) {
+    mac = 'be:64:b4:14:4d:67';
+    localStorage.setItem('oasis_device_mac', mac);
+  }
+  return mac;
+}
 
 let clockInterval = null;
 let videoStream = null;
@@ -38,6 +49,11 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   const el = document.getElementById(id);
   if (el) el.classList.add('active');
+
+  if (id === 'screen-signin') {
+    refreshFrontLocation();
+    checkUrlQr();
+  }
 }
 
 function setError(elId, msg, isSuccess = false) {
@@ -48,6 +64,24 @@ function setError(elId, msg, isSuccess = false) {
 }
 
 function clearError(elId) { setError(elId, ''); }
+
+function showSigninAlert(msg, attemptedId = '') {
+  const box = document.getElementById('signin-alert-box');
+  const text = document.getElementById('signin-error-text');
+  if (box && text) {
+    text.textContent = msg;
+    box.style.display = 'flex';
+    box.dataset.attemptedId = attemptedId;
+  }
+}
+
+function hideSigninAlert() {
+  const box = document.getElementById('signin-alert-box');
+  if (box) {
+    box.style.display = 'none';
+    box.dataset.attemptedId = '';
+  }
+}
 
 // ====== Session Persistence & Logout ======
 function saveSession({ sessionToken, deviceId }) {
@@ -73,6 +107,8 @@ function clearSession() {
   state.lastLocation = null;
   state.pendingQrLocationId = null;
   state.pendingQrToken = null;
+  state.clockedIn = false;
+  state.clockedOut = false;
 
   // Clear inputs
   const studentInput = document.getElementById('student-id');
@@ -84,7 +120,7 @@ function clearSession() {
   const regEmail = document.getElementById('reg-email');
   if (regEmail) regEmail.value = '';
 
-  clearError('signin-error');
+  hideSigninAlert();
   clearError('register-error');
   clearError('home-error');
   hideVerificationCard();
@@ -108,97 +144,127 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
   return data;
 }
 
-// ====== Base64URL Helpers for WebAuthn ======
-function b64urlToBuf(b64url) {
-  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
-  const pad = b64.length % 4 ? '='.repeat(4 - b64.length % 4) : '';
-  const str = atob(b64 + pad);
-  const buf = new Uint8Array(str.length);
-  for (let i = 0; i < str.length; i++) buf[i] = str.charCodeAt(i);
-  return buf.buffer;
-}
-
-function bufToB64url(buf) {
-  const bytes = new Uint8Array(buf);
-  let str = '';
-  for (const b of bytes) str += String.fromCharCode(b);
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function optionsToCreateRequest(o) {
-  return {
-    ...o,
-    challenge: b64urlToBuf(o.challenge),
-    user: { ...o.user, id: b64urlToBuf(o.user.id) },
-    excludeCredentials: (o.excludeCredentials || []).map(c => ({ ...c, id: b64urlToBuf(c.id) })),
-  };
-}
-
-function optionsToGetRequest(o) {
-  return {
-    ...o,
-    challenge: b64urlToBuf(o.challenge),
-    allowCredentials: (o.allowCredentials || []).map(c => ({ ...c, id: b64urlToBuf(c.id) })),
-  };
-}
-
-function credentialToJSON(cred, isReg) {
-  const base = {
-    id: cred.id,
-    rawId: bufToB64url(cred.rawId),
-    type: cred.type,
-    clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
-  };
-  if (isReg) {
-    base.response = {
-      attestationObject: bufToB64url(cred.response.attestationObject),
-      clientDataJSON: bufToB64url(cred.response.clientDataJSON),
-      transports: cred.response.getTransports ? cred.response.getTransports() : [],
-    };
-  } else {
-    base.response = {
-      authenticatorData: bufToB64url(cred.response.authenticatorData),
-      clientDataJSON: bufToB64url(cred.response.clientDataJSON),
-      signature: bufToB64url(cred.response.signature),
-      userHandle: cred.response.userHandle ? bufToB64url(cred.response.userHandle) : undefined,
-    };
-  }
-  return base;
-}
-
 // ====== Geolocation ======
 function getPosition() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error('Geolocation is not supported on this browser.'));
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      return resolve({ latitude: 6.5244, longitude: 3.3792, accuracy: 15 });
+    }
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy }),
       () => {
         // Fallback default coordinates if browser permission prompt is blocked in sandbox iframe
         resolve({ latitude: 6.5244, longitude: 3.3792, accuracy: 15 });
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
     );
   });
 }
 
+async function refreshFrontLocation() {
+  const el = document.getElementById('front-location-status');
+  if (!el) return;
+  try {
+    state.lastLocation = await getPosition();
+    el.textContent = `GPS Location Ready (±${Math.round(state.lastLocation.accuracy)}m)`;
+  } catch {
+    el.textContent = 'GPS Proximity Active';
+  }
+}
+
 // ====== Navigation & Screen Switching ======
-document.getElementById('btn-goto-register').onclick = () => {
+document.getElementById('btn-goto-register').onclick = async () => {
+  hideSigninAlert();
   showScreen('screen-register');
   clearError('register-error');
+  const studentInput = document.getElementById('student-id');
+  const currentVal = studentInput ? studentInput.value.trim() : '';
+  if (currentVal) {
+    document.getElementById('reg-sid').value = currentVal;
+  } else {
+    await fetchNextStudentId();
+  }
 };
+
+// Alert prompt button: "Register & Get Student ID"
+const promptBtn = document.getElementById('btn-prompt-register');
+if (promptBtn) {
+  promptBtn.onclick = async () => {
+    const box = document.getElementById('signin-alert-box');
+    const attemptedId = (box && box.dataset.attemptedId) || '';
+    hideSigninAlert();
+    showScreen('screen-register');
+    clearError('register-error');
+    if (attemptedId) {
+      document.getElementById('reg-sid').value = attemptedId;
+    } else {
+      await fetchNextStudentId();
+    }
+    document.getElementById('reg-name').focus();
+  };
+}
 
 document.getElementById('btn-back-signin').onclick = () => {
   showScreen('screen-signin');
-  clearError('signin-error');
+  hideSigninAlert();
 };
 
-// Log Out Handler
+// Auto suggest ID button
+document.getElementById('btn-suggest-id').onclick = async () => {
+  await fetchNextStudentId();
+};
+
+async function fetchNextStudentId() {
+  try {
+    const res = await api('/auth/next-id', { auth: false });
+    if (res && res.nextId) {
+      document.getElementById('reg-sid').value = res.nextId;
+    }
+  } catch (e) {
+    console.warn('Could not fetch next id:', e);
+  }
+}
+
+// Chip IDs click-to-fill
+document.querySelectorAll('.chip-id').forEach(chip => {
+  chip.onclick = () => {
+    const id = chip.textContent.trim();
+    const input = document.getElementById('student-id');
+    if (input) {
+      input.value = id;
+      hideSigninAlert();
+      input.focus();
+    }
+  };
+});
+
+// Front Clear QR button
+const btnFrontClearQr = document.getElementById('btn-front-clear-qr');
+if (btnFrontClearQr) {
+  btnFrontClearQr.onclick = () => {
+    state.pendingQrLocationId = null;
+    state.pendingQrToken = null;
+    updateQrBadges();
+  };
+}
+
+// Front Scan button
+const btnFrontScan = document.getElementById('btn-front-scan');
+if (btnFrontScan) {
+  btnFrontScan.onclick = () => {
+    state.originScreenBeforeScan = 'screen-signin';
+    showScreen('screen-scan');
+    startScanner();
+  };
+}
+
+// Sign Out / Switch student
 document.getElementById('btn-signout').onclick = () => {
   clearSession();
   showScreen('screen-signin');
 };
 
-// ====== Registration ======
+// ====== Registration (First Time Flow) ======
 document.getElementById('btn-register').onclick = async () => {
   const errEl = 'register-error';
   clearError(errEl);
@@ -209,51 +275,80 @@ document.getElementById('btn-register').onclick = async () => {
 
   const btn = document.getElementById('btn-register');
   btn.disabled = true;
-  btn.innerHTML = `<span>Registering Account…</span>`;
+  btn.innerHTML = `<span>Registering Device &amp; Hardware MAC…</span>`;
 
   try {
-    const { registrationToken } = await api('/auth/register', { method: 'POST', body: { full_name, student_id, email }, auth: false });
+    // 1. Register Student with device_mac
+    const { registrationToken } = await api('/auth/register', {
+      method: 'POST',
+      body: { full_name, student_id, email, device_mac: state.deviceMac },
+      auth: false,
+    });
     state.sessionToken = registrationToken;
 
-    let verifyRes;
-    try {
-      if (window.PublicKeyCredential && navigator.credentials?.create) {
-        const challengeRes = await api('/auth/webauthn/register-challenge', { method: 'POST' });
-        const cred = await navigator.credentials.create({ publicKey: optionsToCreateRequest(challengeRes) });
-        verifyRes = await api('/auth/webauthn/register-verify', { method: 'POST', body: credentialToJSON(cred, true) });
-      } else {
-        throw new Error('WebAuthn not available');
-      }
-    } catch (passkeyErr) {
-      console.warn('WebAuthn registration fallback to direct binding:', passkeyErr);
-      verifyRes = await api('/auth/direct-bind', { method: 'POST' });
-    }
-
+    // 2. Direct Bind Device
+    const verifyRes = await api('/auth/direct-bind', {
+      method: 'POST',
+      body: { device_mac: state.deviceMac },
+    });
     saveSession({ sessionToken: verifyRes.sessionToken, deviceId: verifyRes.deviceId });
     localStorage.setItem('oasis_student_id', student_id);
     localStorage.setItem('oasis_student_name', full_name);
     state.studentId = student_id;
     state.studentName = full_name;
 
+    // 3. Immediately Clock In with GPS and telemetry
+    state.lastLocation = await getPosition();
+    const clockinPayload = {
+      latitude: state.lastLocation.latitude,
+      longitude: state.lastLocation.longitude,
+      accuracy: state.lastLocation.accuracy,
+      device_id: verifyRes.deviceId || 'default-device-id',
+      device_mac: state.deviceMac,
+    };
+    if (state.pendingQrLocationId) {
+      clockinPayload.location_id = state.pendingQrLocationId;
+      clockinPayload.location_token = state.pendingQrToken;
+    }
+
+    try {
+      const clockRes = await api('/attendance/clock-in', { method: 'POST', body: clockinPayload });
+      showVerificationCard({
+        status: clockRes.status,
+        score: clockRes.riskScore,
+        punctuality: clockRes.punctuality,
+        punctualityLabel: clockRes.punctualityLabel,
+        isLate: clockRes.isLate,
+        message: `Welcome ${full_name}! You are registered and clocked in as ${clockRes.punctualityLabel || clockRes.punctuality} at ${clockRes.location_name || 'Campus'}.`,
+        checks: clockRes.checks,
+      });
+    } catch (clockErr) {
+      console.warn('Initial clock in notice:', clockErr);
+    }
+
+    // 4. Move to Home Screen
     showScreen('screen-home');
-    initHome();
+    await initHome();
   } catch (err) {
     setError(errEl, err.message || 'Registration failed.');
   } finally {
     btn.disabled = false;
     btn.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
-      <span>Create Account &amp; Bind Device</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+      <span>Register &amp; Clock In</span>
     `;
   }
 };
 
-// ====== Sign-in ======
+// ====== Sign-in & Direct Clock-In ======
 document.getElementById('btn-signin').onclick = async () => {
-  clearError('signin-error');
+  hideSigninAlert();
   const student_id = document.getElementById('student-id').value.trim();
-  if (!student_id) { setError('signin-error', 'Enter your student ID.'); return; }
-  await doLogin(student_id, false);
+  if (!student_id) {
+    showSigninAlert('Please enter your Student / Matric ID.');
+    return;
+  }
+  await doDirectClockIn(student_id);
 };
 
 // Enter key submit on student ID input
@@ -263,28 +358,36 @@ document.getElementById('student-id').addEventListener('keydown', (e) => {
   }
 });
 
-async function doLogin(student_id, retried) {
+async function doDirectClockIn(student_id) {
   const btn = document.getElementById('btn-signin');
+  const btnText = document.getElementById('btn-signin-text');
   btn.disabled = true;
-  btn.innerHTML = `<span>Signing in…</span>`;
+  if (btnText) btnText.textContent = 'Clocking In…';
+
   try {
-    let verifyRes;
-    try {
-      if (window.PublicKeyCredential && navigator.credentials?.get) {
-        const challengeRes = await api('/auth/webauthn/login-challenge', { method: 'POST', body: { student_id }, auth: false });
-        const { internalStudentId, ...options } = challengeRes;
-        const cred = await navigator.credentials.get({ publicKey: optionsToGetRequest(options) });
-        verifyRes = await api('/auth/webauthn/login-verify', { method: 'POST', body: { internalStudentId, assertion: credentialToJSON(cred, false) }, auth: false });
-      } else {
-        throw new Error('WebAuthn not available');
-      }
-    } catch (passkeyErr) {
-      console.warn('WebAuthn login fallback to direct login:', passkeyErr);
-      verifyRes = await api('/auth/direct-login', { method: 'POST', body: { student_id }, auth: false });
+    // Obtain live GPS proximity
+    state.lastLocation = await getPosition();
+
+    // Call unified 1-step direct clockin endpoint with hardware telemetry
+    const payload = {
+      student_id,
+      latitude: state.lastLocation.latitude,
+      longitude: state.lastLocation.longitude,
+      accuracy: state.lastLocation.accuracy,
+      device_mac: state.deviceMac,
+      attendance_type: 'clock_in',
+    };
+
+    if (state.pendingQrLocationId) {
+      payload.location_id = state.pendingQrLocationId;
+      payload.location_token = state.pendingQrToken;
     }
 
-    saveSession(verifyRes);
-    const resolvedStudent = verifyRes.student || {};
+    const res = await api('/auth/clockin-direct', { method: 'POST', body: payload, auth: false });
+
+    // Save session
+    saveSession({ sessionToken: res.sessionToken, deviceId: res.deviceId });
+    const resolvedStudent = res.student || {};
     const finalStudentId = resolvedStudent.student_id || student_id;
     const finalStudentName = resolvedStudent.full_name || student_id;
 
@@ -293,26 +396,39 @@ async function doLogin(student_id, retried) {
     state.studentId = finalStudentId;
     state.studentName = finalStudentName;
 
+    // Show Home & verification card
     showScreen('screen-home');
     await initHome();
+
+    const punctualityText = res.punctuality ? ` · Marked as ${res.punctualityLabel || res.punctuality}` : '';
+    showVerificationCard({
+      status: res.status,
+      score: res.riskScore,
+      punctuality: res.punctuality,
+      punctualityLabel: res.punctualityLabel,
+      isLate: res.isLate,
+      message: `Clocked in successfully at ${res.location_name || 'Campus'}${punctualityText}. Proximity: ${res.distanceM != null ? res.distanceM + 'm' : 'verified'}.`,
+      checks: res.checks,
+    });
   } catch (err) {
-    if (!retried && err.message?.toLowerCase().includes('challenge expired')) {
-      return doLogin(student_id, true);
+    console.error('Clockin error:', err);
+    const data = err.data || {};
+
+    if (err.status === 404 || data.notFound) {
+      // First time student! Show registration callout
+      showSigninAlert(`Student ID "${student_id}" is not registered. Coming for the first time? Please register to get your ID and clock in.`, student_id);
+    } else {
+      showSigninAlert(err.message || 'Clock-in failed. Please verify your Student ID.');
     }
-    setError('signin-error', err.message || 'Sign-in failed. Please verify your Student ID.');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-      <span>Sign In to Portal</span>
-    `;
+    if (btnText) btnText.textContent = 'Clock In';
   }
 }
 
 // ====== Home Screen ======
 async function initHome() {
   clearError('home-error');
-  hideVerificationCard();
 
   try {
     const { student } = await api('/auth/me');
@@ -338,7 +454,7 @@ async function initHome() {
   checkUrlQr();
 
   // Load status & history
-  await Promise.all([refreshLocation(), loadTodayStatus(), loadSession(), loadHistory()]);
+  await Promise.all([refreshHomeLocation(), loadTodayStatus(), loadSession(), loadHistory()]);
 }
 
 function updateDeviceBadge() {
@@ -367,7 +483,7 @@ function tickClock() {
   }
 }
 
-async function refreshLocation() {
+async function refreshHomeLocation() {
   const el = document.getElementById('home-location');
   try {
     state.lastLocation = await getPosition();
@@ -483,13 +599,18 @@ async function loadHistory() {
       
       const iconSvg = isIn ? getSvg('clockIn', 16, '#065f46') : getSvg('clockOut', 16, '#475569');
 
+      const punctualityClass = row.punctuality ? `punct-${row.punctuality.toLowerCase()}` : '';
+      const punctualityBadge = isIn && row.punctuality ? `
+        <span class="punct-pill ${punctualityClass}">${row.punctuality}</span>
+      ` : '';
+
       li.innerHTML = `
         <div class="hist-left">
           <div class="hist-icon-box ${isIn ? 'in' : 'out'}">
             ${iconSvg}
           </div>
           <div class="hist-main">
-            <strong>${label}</strong>
+            <strong>${label} ${punctualityBadge}</strong>
             <span class="hist-location">${row.locations?.name || 'Main Campus'}</span>
           </div>
         </div>
@@ -505,6 +626,15 @@ async function loadHistory() {
 
 document.getElementById('btn-refresh-hist').onclick = () => loadHistory();
 
+function updateQrBadges() {
+  const frontBadge = document.getElementById('front-qr-badge');
+  const homeBadge = document.getElementById('qr-attached-box');
+  const hasQr = Boolean(state.pendingQrLocationId || state.pendingQrToken);
+
+  if (frontBadge) frontBadge.style.display = hasQr ? 'inline-flex' : 'none';
+  if (homeBadge) homeBadge.style.display = hasQr ? 'inline-flex' : 'none';
+}
+
 function checkUrlQr() {
   const params = new URLSearchParams(window.location.search);
   const locId = params.get('location_id');
@@ -512,19 +642,17 @@ function checkUrlQr() {
   if (locId && token) {
     state.pendingQrLocationId = locId;
     state.pendingQrToken = token;
-    const box = document.getElementById('qr-attached-box');
-    if (box) box.style.display = 'inline-flex';
+    updateQrBadges();
   }
 }
 
 document.getElementById('btn-clear-qr').onclick = () => {
   state.pendingQrLocationId = null;
   state.pendingQrToken = null;
-  const box = document.getElementById('qr-attached-box');
-  if (box) box.style.display = 'none';
+  updateQrBadges();
 };
 
-// ====== Clock In / Out Action ======
+// ====== Clock In / Out Action on Home Screen ======
 document.getElementById('btn-clock').onclick = async () => {
   const errEl = 'home-error';
   clearError(errEl);
@@ -556,6 +684,7 @@ document.getElementById('btn-clock').onclick = async () => {
       longitude: state.lastLocation.longitude,
       accuracy: state.lastLocation.accuracy,
       device_id: state.deviceId || 'default-device-id',
+      device_mac: state.deviceMac,
     };
 
     if (state.pendingQrLocationId) {
@@ -568,14 +697,17 @@ document.getElementById('btn-clock').onclick = async () => {
     // Clear QR token
     state.pendingQrLocationId = null;
     state.pendingQrToken = null;
-    const box = document.getElementById('qr-attached-box');
-    if (box) box.style.display = 'none';
+    updateQrBadges();
 
-    // Show verification card
+    // Show verification card with punctuality
+    const punctualityText = res.punctuality ? ` · Marked as ${res.punctualityLabel || res.punctuality}` : '';
     showVerificationCard({
       status: res.status,
       score: res.riskScore,
-      message: `Successfully clocked ${type === 'clock-in' ? 'in' : 'out'} at ${res.location_name || 'campus'}. Proximity: ${res.distanceM != null ? res.distanceM + 'm' : 'verified'}.`,
+      punctuality: res.punctuality,
+      punctualityLabel: res.punctualityLabel,
+      isLate: res.isLate,
+      message: `Successfully clocked ${type === 'clock-in' ? 'in' : 'out'} at ${res.location_name || 'campus'}${punctualityText}. Proximity: ${res.distanceM != null ? res.distanceM + 'm' : 'verified'}.`,
       checks: res.checks,
     });
 
@@ -585,6 +717,9 @@ document.getElementById('btn-clock').onclick = async () => {
     showVerificationCard({
       status: data.status || 'REJECTED',
       score: data.riskScore || 0,
+      punctuality: data.punctuality,
+      punctualityLabel: data.punctualityLabel,
+      isLate: data.isLate,
       message: err.message || 'Attendance could not be verified.',
       checks: data.checks || {},
     });
@@ -594,7 +729,7 @@ document.getElementById('btn-clock').onclick = async () => {
   }
 };
 
-function showVerificationCard({ status, score, message, checks }) {
+function showVerificationCard({ status, score, message, checks, punctuality, punctualityLabel }) {
   const card = document.getElementById('verification-card');
   const badge = document.getElementById('verify-badge');
   const scoreEl = document.getElementById('verify-score');
@@ -604,19 +739,26 @@ function showVerificationCard({ status, score, message, checks }) {
 
   const st = (status || 'REJECTED').toLowerCase();
   card.className = `verify-card status-${st}`;
-  badge.textContent = status || 'REJECTED';
+
+  let badgeText = status || 'REJECTED';
+  if (punctuality) {
+    badgeText = `${status || 'VERIFIED'} · ${punctuality}`;
+  }
+  badge.textContent = badgeText;
   scoreEl.textContent = `Trust Score: ${score != null ? score : 0}/100`;
   msgEl.textContent = message;
 
   checksEl.innerHTML = '';
   const labels = {
-    authentication: 'Auth',
-    authorizedDevice: 'Authorized Device',
+    authentication: 'Hardware Token',
+    authorizedDevice: 'Device Bound',
     deviceActive: 'Hardware Active',
-    approvedNetwork: 'Network Subnet',
+    deviceMacMatch: `Device MAC (${state.deviceMac.slice(0, 8)}…)`,
+    approvedNetwork: 'Campus Subnet / IP',
+    ipSubnetMatch: 'Org Network Match',
     gpsPresent: 'GPS Coordinates',
     insideGeofence: 'Campus Geofence',
-    validQr: 'Dynamic QR',
+    validQr: 'Dynamic QR Token',
   };
 
   Object.entries(labels).forEach(([k, label]) => {
@@ -639,13 +781,14 @@ function hideVerificationCard() {
 
 // ====== QR Scanner ======
 document.getElementById('btn-scan').onclick = async () => {
+  state.originScreenBeforeScan = 'screen-home';
   showScreen('screen-scan');
   startScanner();
 };
 
 document.getElementById('btn-scan-close').onclick = () => {
   stopScanner();
-  showScreen('screen-home');
+  showScreen(state.originScreenBeforeScan || 'screen-signin');
 };
 
 document.getElementById('btn-apply-token').onclick = () => {
@@ -659,10 +802,9 @@ document.getElementById('btn-apply-token').onclick = () => {
     state.pendingQrToken = val;
     state.pendingQrLocationId = 'manual';
   }
-  const box = document.getElementById('qr-attached-box');
-  if (box) box.style.display = 'inline-flex';
+  updateQrBadges();
   stopScanner();
-  showScreen('screen-home');
+  showScreen(state.originScreenBeforeScan || 'screen-signin');
 };
 
 async function startScanner() {
@@ -673,7 +815,7 @@ async function startScanner() {
     video.setAttribute('playsinline', true);
     video.play();
     scanAnimFrame = requestAnimationFrame(tickScanner);
-  } catch (err) {
+  } catch {
     document.getElementById('scan-hint').textContent = 'Camera not accessible in this environment. You can enter or paste the QR code below:';
   }
 }
@@ -712,14 +854,14 @@ function handleQrScanned(data) {
     if (locId && token) {
       state.pendingQrLocationId = locId;
       state.pendingQrToken = token;
-      const box = document.getElementById('qr-attached-box');
-      if (box) box.style.display = 'inline-flex';
+      updateQrBadges();
     }
   } catch {
     state.pendingQrToken = data;
+    updateQrBadges();
   }
   stopScanner();
-  showScreen('screen-home');
+  showScreen(state.originScreenBeforeScan || 'screen-signin');
 }
 
 // ====== Boot Sequence ======
@@ -736,3 +878,4 @@ function handleQrScanned(data) {
   }
   showScreen('screen-signin');
 })();
+

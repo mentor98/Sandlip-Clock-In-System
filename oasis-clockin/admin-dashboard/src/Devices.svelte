@@ -116,6 +116,7 @@
             <th>Student</th>
             <th>Matric ID</th>
             <th>Hardware Platform</th>
+            <th>MAC / Hardware ID</th>
             <th>Network IP</th>
             <th>Status</th>
             <th>Registered</th>
@@ -135,7 +136,12 @@
                   <span>{plat.label}</span>
                 </span>
               </td>
-              <td class="mono">{d.ip_address || '—'}</td>
+              <td class="mono mac-cell">
+                <code>{d.mac_address || d.students?.registered_mac || d.webauthn_credential_id?.slice(0, 18) || 'MAC-UNBOUND'}</code>
+              </td>
+              <td class="mono ip-cell">
+                <span class="ip-tag">{d.ip_address || d.students?.registered_ip || '—'}</span>
+              </td>
               <td><span class="pill {statusColors[d.status] || 'pill-pending'}">{d.status || 'PENDING'}</span></td>
               <td class="muted">{formatDate(d.registered_at)}</td>
               <td class="muted">{formatDate(d.last_seen_at)}</td>
@@ -186,8 +192,15 @@
   }
   .filter-tabs button:hover { background: #f8fafc; color: #0f172a; }
   .filter-tabs button.active {
-    background: #0f766e; color: white; border-color: #0f766e;
-    box-shadow: 0 2px 6px rgba(15,118,110,0.25);
+    background: linear-gradient(135deg, #32F000 0%, #0db872 30%, #0284c7 68%, #073B78 100%);
+    color: white; border-color: transparent;
+    box-shadow: 0 4px 14px rgba(7, 59, 120, 0.25);
+    text-shadow: 0 1px 2px rgba(7, 59, 120, 0.4);
+  }
+
+  .mac-cell code {
+    background: #f1f5f9; padding: 2px 6px; border-radius: 4px;
+    font-size: 11.5px; color: #0f172a; border: 1px solid #e2e8f0;
   }
 
   .badge-alert {

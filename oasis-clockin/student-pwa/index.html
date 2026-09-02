@@ -10,19 +10,10 @@
 </head>
 <body>
 
-  <!-- ══ SIGN IN SCREEN ══════════════════════════════════════════════════════ -->
-  <main id="screen-signin" class="screen active">
-    <!-- Left Side: Plain Image without container -->
-    <section class="panel panel-left panel-image-left">
-      <img
-        src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788353121/ChatGPT_Image_Sep_2_2026_01_44_48_PM_nykarx.png"
-        alt="Oasis Attendance Platform"
-        class="hero-full-img"
-      />
-    </section>
-
-    <!-- Right Side: Inputs & Authentication -->
-    <section class="panel panel-right">
+  <!-- ══ CLOCK IN SCREEN ══════════════════════════════════════════════════ -->
+  <main id="screen-signin" class="screen active auth-screen-center">
+    <!-- Centered Inputs & Direct Clock In -->
+    <section class="panel panel-center">
       <div class="form-wrap">
         <div class="brand-sub-header">
           <div class="brand-icon small">
@@ -34,26 +25,67 @@
           </div>
         </div>
 
-        <h2>Student Sign In</h2>
-        <p class="form-sub">Enter your student / matric ID to authenticate on this device</p>
+        <h2>Student Clock In</h2>
+        <p class="form-sub">Enter your student / matric ID to clock in directly</p>
         
+        <!-- Live GPS Proximity Line -->
+        <div class="front-loc-pill">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span id="front-location-status">Detecting GPS proximity…</span>
+        </div>
+
+        <!-- Optional Attached QR Badge -->
+        <div id="front-qr-badge" class="qr-attached-banner" style="display: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span>QR Scanned &amp; Attached</span>
+          <button id="btn-front-clear-qr" class="btn-text" title="Remove QR">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
         <label for="student-id">Student / Matric ID</label>
         <div class="input-wrap">
           <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <input id="student-id" type="text" placeholder="e.g. SAN-2026-014" autocomplete="username" />
         </div>
 
-        <button id="btn-signin" class="btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-          <span>Sign In to Portal</span>
-        </button>
-
-        <div class="hint-card">
-          <span>Demo Student ID:</span>
-          <code>SAN-2026-014</code>
+        <div class="action-buttons-group">
+          <button id="btn-signin" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span id="btn-signin-text">Clock In</span>
+          </button>
+          
+          <button id="btn-front-scan" class="btn-secondary" title="Scan Dynamic QR from Classroom">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>Scan QR</span>
+          </button>
         </div>
 
-        <button id="btn-goto-register" class="btn-link">New student? Register account &amp; bind device</button>
+        <!-- Dynamic Error & First-Time Helper Alert Box -->
+        <div id="signin-alert-box" class="first-time-prompt" style="display: none;">
+          <div class="prompt-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div class="prompt-body">
+            <p id="signin-error-text" class="prompt-msg">First time here? Register to get your Student ID</p>
+            <button id="btn-prompt-register" class="btn-prompt-action">
+              <span>Register &amp; Get Student ID</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="hint-card">
+          <span>Registered IDs:</span>
+          <code class="chip-id" title="Click to fill">SAN-2026-014</code>
+          <code class="chip-id" title="Click to fill">SAN-2026-015</code>
+          <code class="chip-id" title="Click to fill">SAN-2026-016</code>
+        </div>
+
+        <div class="first-time-footer">
+          <span>First time coming?</span>
+          <button id="btn-goto-register" class="btn-link-inline">Register to get your ID &amp; Clock In</button>
+        </div>
         
         <div class="portal-switch-box">
           <a href="/admin" class="portal-switch-link">
@@ -61,24 +93,14 @@
             <span>Switch to Admin Dashboard</span>
           </a>
         </div>
-        <p id="signin-error" class="error" role="alert"></p>
       </div>
     </section>
   </main>
 
-  <!-- ══ REGISTER SCREEN ════════════════════════════════════════════════════ -->
-  <main id="screen-register" class="screen">
-    <!-- Left Side: Plain Image without container -->
-    <section class="panel panel-left panel-image-left">
-      <img
-        src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788353121/ChatGPT_Image_Sep_2_2026_01_44_48_PM_nykarx.png"
-        alt="Oasis Attendance Platform"
-        class="hero-full-img"
-      />
-    </section>
-
-    <!-- Right Side: Inputs & Registration -->
-    <section class="panel panel-right">
+  <!-- ══ REGISTER & GET ID SCREEN ═══════════════════════════════════════════ -->
+  <main id="screen-register" class="screen auth-screen-center">
+    <!-- Centered Registration & ID Generation -->
+    <section class="panel panel-center">
       <div class="form-wrap">
         <div class="brand-sub-header">
           <div class="brand-icon small">
@@ -86,23 +108,17 @@
           </div>
           <div>
             <span class="brand-title small">Oasis ClockIn</span>
-            <span class="brand-sub">Student Device Registration</span>
+            <span class="brand-sub">First-Time Student Registration</span>
           </div>
         </div>
 
-        <h2>Create Student Account</h2>
-        <p class="form-sub">Bind your device for secure proximity attendance</p>
+        <h2>Register &amp; Get Student ID</h2>
+        <p class="form-sub">Provide your details to receive your Student ID and clock in</p>
 
         <label for="reg-name">Full Name</label>
         <div class="input-wrap">
           <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <input id="reg-name" type="text" placeholder="e.g. Jane Doe" autocomplete="name" />
-        </div>
-
-        <label for="reg-sid">Student / Matric ID</label>
-        <div class="input-wrap">
-          <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <input id="reg-sid" type="text" placeholder="SAN-2026-014" />
         </div>
 
         <label for="reg-email">Institutional Email</label>
@@ -111,14 +127,26 @@
           <input id="reg-email" type="email" placeholder="jane@oasis.edu" autocomplete="email" />
         </div>
 
+        <div class="sid-label-row">
+          <label for="reg-sid" style="margin:0">Assigned Student ID</label>
+          <button id="btn-suggest-id" class="btn-micro" type="button">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            <span>Auto-Generate</span>
+          </button>
+        </div>
+        <div class="input-wrap" style="margin-top: 6px;">
+          <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <input id="reg-sid" type="text" placeholder="SAN-2026-017" />
+        </div>
+
         <button id="btn-register" class="btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
-          <span>Create Account &amp; Bind Device</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+          <span>Register &amp; Clock In</span>
         </button>
 
         <button id="btn-back-signin" class="btn-link">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-          <span>Back to Sign In</span>
+          <span>Back to Clock In</span>
         </button>
 
         <p id="register-error" class="error" role="alert"></p>

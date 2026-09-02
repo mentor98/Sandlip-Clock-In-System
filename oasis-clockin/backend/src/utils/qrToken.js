@@ -9,12 +9,32 @@ const SECRET = () => process.env.QR_TOKEN_SECRET || 'oasis-qr-secret-key-default
  * The nonce is stored in the locations table — generating a new QR replaces the nonce,
  * instantly invalidating all previously issued tokens for that location.
  */
-function generateLocationToken(locationId, nonce) {
+function generateLocationToken(optsOrLocId, maybeNonce) {
+  let locationId;
+  let nonce;
+  let adminId = null;
+  let adminIp = null;
+  let sessionId = null;
+
+  if (typeof optsOrLocId === 'object' && optsOrLocId !== null) {
+    locationId = optsOrLocId.locationId;
+    nonce = optsOrLocId.nonce;
+    adminId = optsOrLocId.adminId || null;
+    adminIp = optsOrLocId.adminIp || null;
+    sessionId = optsOrLocId.sessionId || null;
+  } else {
+    locationId = optsOrLocId;
+    nonce = maybeNonce;
+  }
+
   const payload = {
     lid: locationId,
     iat: Date.now(),
     ttl: TTL() * 1000,
     nonce,
+    aid: adminId,
+    aip: adminIp,
+    sid: sessionId,
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const sig = crypto

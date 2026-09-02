@@ -15,6 +15,7 @@
   let filterTo = '';
   let filterLocation = '';
   let filterStudent = '';
+  let filterPunctuality = '';
 
   async function loadLocations() {
     try {
@@ -31,6 +32,7 @@
       if (filterTo) params.set('to', filterTo);
       if (filterLocation) params.set('location_id', filterLocation);
       if (filterStudent) params.set('student', filterStudent);
+      if (filterPunctuality) params.set('punctuality', filterPunctuality);
       const res = await api(`/admin/attendance?${params}`);
       records = res.attendance || [];
     } catch (e) { error = e.message; }
@@ -42,6 +44,7 @@
     if (filterFrom) params.set('from', filterFrom);
     if (filterTo) params.set('to', filterTo);
     if (filterLocation) params.set('location_id', filterLocation);
+    if (filterPunctuality) params.set('punctuality', filterPunctuality);
     const token = localStorage.getItem('oasis_admin_session');
     window.open(`${API_BASE}/admin/attendance/export?${params}&auth=${encodeURIComponent(token)}`);
   }
@@ -57,6 +60,9 @@
 
   $: totalIn = records.filter(r => r.type === 'clock_in').length;
   $: totalOut = records.filter(r => r.type === 'clock_out').length;
+  $: earlyCount = records.filter(r => r.punctuality === 'EARLY').length;
+  $: towardsCount = records.filter(r => r.punctuality === 'TOWARDS').length;
+  $: lateCount = records.filter(r => r.punctuality === 'LATE' || r.is_late).length;
   $: uniqueStudents = new Set(records.map(r => r.student_id)).size;
 </script>
 
@@ -82,6 +88,15 @@
         </select>
       </div>
       <div class="field">
+        <label>Punctuality Status</label>
+        <select bind:value={filterPunctuality}>
+          <option value="">All Punctuality</option>
+          <option value="EARLY">Early Arrivals</option>
+          <option value="TOWARDS">Towards / On-Time</option>
+          <option value="LATE">Late Clock-Ins</option>
+        </select>
+      </div>
+      <div class="field">
         <label>Student Name / Matric ID</label>
         <div class="search-wrap">
           <Icon name="search" size={14} color="#64748b" />
@@ -94,7 +109,7 @@
         <Icon name="search" size={14} />
         <span>Filter Records</span>
       </button>
-      <button class="btn ghost" on:click={() => { filterFrom=''; filterTo=''; filterLocation=''; filterStudent=''; load(); }}>
+      <button class="btn ghost" on:click={() => { filterFrom=''; filterTo=''; filterLocation=''; filterStudent=''; filterPunctuality=''; load(); }}>
         <Icon name="x" size={14} />
         <span>Clear</span>
       </button>
@@ -112,8 +127,16 @@
       <span class="stat-lbl">Total Records</span>
     </div>
     <div class="stat">
-      <span class="stat-val">{uniqueStudents}</span>
-      <span class="stat-lbl">Unique Students</span>
+      <span class="stat-val punct-early-txt">{earlyCount}</span>
+      <span class="stat-lbl">Early Arrivals</span>
+    </div>
+    <div class="stat">
+      <span class="stat-val punct-towards-txt">{towardsCount}</span>
+      <span class="stat-lbl">Towards / On-Time</span>
+    </div>
+    <div class="stat">
+      <span class="stat-val punct-late-txt">{lateCount}</span>
+      <span class="stat-lbl">Late Arrivals</span>
     </div>
     <div class="stat">
       <span class="stat-val clock-in">{totalIn}</span>
@@ -144,8 +167,10 @@
             <th>Matric ID</th>
             <th>Location</th>
             <th>Type</th>
-            <th>Date</th>
-            <th>Time</th>
+            <th>Punctuality</th>
+            <th>Device MAC</th>
+            <th>Network IP</th>
+            <th>Date & Time</th>
           </tr>
         </thead>
         <tbody>
@@ -155,8 +180,20 @@
               <td><code>{r.students?.student_id || '—'}</code></td>
               <td>{r.locations?.name || '—'}</td>
               <td><span class="pill {typeClass(r.type)}">{typeLabel(r.type)}</span></td>
-              <td>{new Date(r.recorded_at).toLocaleDateString()}</td>
-              <td class="muted">{new Date(r.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+              <td>
+                {#if r.type === 'clock_in' && r.punctuality}
+                  <span class="punct-pill punct-{r.punctuality.toLowerCase()}">{r.punctuality}</span>
+                {:else if r.type === 'clock_in'}
+                  <span class="punct-pill punct-towards">RECORDED</span>
+                {:else}
+                  <span class="muted">—</span>
+                {/if}
+              </td>
+              <td class="mono"><code>{r.device_mac || r.students?.registered_mac || 'MAC-SECURE'}</code></td>
+              <td class="mono">{r.ip_address || r.students?.registered_ip || '—'}</td>
+              <td class="muted">
+                {new Date(r.recorded_at).toLocaleDateString()} {new Date(r.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </td>
             </tr>
           {/each}
         </tbody>
@@ -197,8 +234,15 @@
     background: white; cursor: pointer; font-size: 13px; font-weight: 600;
     transition: all 0.15s; color: #334155;
   }
-  .btn-primary { background: #0f766e; color: white; border-color: #0f766e; }
-  .btn-primary:hover { background: #0b5c54; }
+  .btn-primary {
+    background: linear-gradient(135deg, #32F000 0%, #0db872 30%, #0284c7 68%, #073B78 100%);
+    color: white; border: none; font-weight: 700;
+    box-shadow: 0 3px 12px rgba(7, 59, 120, 0.2);
+  }
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #2bd000 0%, #0aa062 30%, #0274b0 68%, #052c5c 100%);
+    box-shadow: 0 4px 16px rgba(50, 240, 0, 0.35);
+  }
   .btn.ghost { background: #f8fafc; }
   .btn.ghost:hover { background: #f1f5f9; }
   .btn.export { background: #0f172a; color: white; border-color: #0f172a; margin-left: auto; }
@@ -213,6 +257,9 @@
   .stat-val { font-size: 24px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; }
   .stat-val.clock-in { color: #0f766e; }
   .stat-val.clock-out { color: #64748b; }
+  .stat-val.punct-early-txt { color: #15803d; }
+  .stat-val.punct-towards-txt { color: #0284c7; }
+  .stat-val.punct-late-txt { color: #dc2626; }
   .stat-lbl { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
 
   .table-wrap {
@@ -231,6 +278,7 @@
 
   .bold { font-weight: 600; color: #0f172a; }
   .muted { color: #94a3b8; }
+  .mono { font-family: monospace; font-size: 12px; }
   .center { text-align: center; }
   .pad-24 { padding: 24px; }
 
@@ -240,6 +288,14 @@
   }
   .pill-in { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
   .pill-out { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+
+  .punct-pill {
+    display: inline-block; padding: 3px 8px; border-radius: 6px;
+    font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .punct-early { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+  .punct-towards { background: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc; }
+  .punct-late { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
 
   .notice { padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; }
   .notice.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
