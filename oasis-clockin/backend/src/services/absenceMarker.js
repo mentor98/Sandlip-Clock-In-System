@@ -9,6 +9,7 @@
  */
 
 const { supabaseAdmin } = require('../config/supabase');
+const { sendAlertEmail } = require('../utils/mailer');
 
 /**
  * Mark students absent if no clock-in by deadline.
@@ -42,11 +43,21 @@ async function markAbsent() {
     console.log(`Found ${sessions.length} session(s) today.`);
 
     // ── 2. For each session, mark absent students ──────────────────────────────
+    let totalAbsences = 0;
     for (const session of sessions) {
-      await markAbsentForSession(session, today, absenceDeadline);
+      const count = await markAbsentForSession(session, today, absenceDeadline);
+      totalAbsences += (count || 0);
     }
 
-    console.log('✓ Absence marker job completed.');
+    if (totalAbsences > 0) {
+      await sendAlertEmail({
+        subject: `Daily Absence Summary - ${today}`,
+        text: `The scheduled absence marker job marked ${totalAbsences} student(s) as absent for sessions on ${today}.`,
+        html: `<h3>Daily Absence Summary</h3><p>The scheduled job marked <strong>${totalAbsences}</strong> student(s) as absent for today's sessions (${today}).</p>`,
+      });
+    }
+
+    console.log(`✓ Absence marker job completed. Total marked absent: ${totalAbsences}`);
   } catch (error) {
     console.error('Absence marker job failed:', error);
   }
@@ -82,6 +93,7 @@ async function markAbsentForSession(session, todayDateStr, absenceDeadline) {
 
   console.log(`Checking ${allStudents.length} active student(s)...`);
 
+  let sessionAbsenceCount = 0;
   // ── For each student, check if they have a clock-in for this session ────────
   for (const student of allStudents) {
     const { id: studentId, full_name, student_id: studentIdStr } = student;
@@ -126,6 +138,7 @@ async function markAbsentForSession(session, todayDateStr, absenceDeadline) {
           console.error(`Error marking student ${studentIdStr} absent:`, insertError);
         }
       } else {
+        sessionAbsenceCount++;
         console.log(`✓ Marked ${full_name} (${studentIdStr}) as absent.`);
 
         // Log audit event
@@ -142,6 +155,8 @@ async function markAbsentForSession(session, todayDateStr, absenceDeadline) {
       }
     }
   }
+
+  return sessionAbsenceCount;
 }
 
 module.exports = { markAbsent };

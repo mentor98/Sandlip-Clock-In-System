@@ -75,6 +75,38 @@ router.post('/login', async (req, res) => {
     .single();
 
   if (!admin) {
+    // Check if table is currently empty and credentials match initial default admin
+    const { data: allAdmins } = await supabaseAdmin
+      .from('admin_accounts')
+      .select('id')
+      .limit(1);
+
+    if ((!allAdmins || allAdmins.length === 0) && (admin_id === 'ADMIN-001' || admin_id === 'admin')) {
+      if (password === 'admin12345' || password === 'admin') {
+        const salt = crypto.randomBytes(32).toString('hex');
+        const hash = hashPassword(password, salt);
+        const { data: newAdmin } = await supabaseAdmin
+          .from('admin_accounts')
+          .insert({
+            full_name: 'System Administrator',
+            admin_id: 'ADMIN-001',
+            email: 'admin@oasis.edu',
+            password_hash: hash,
+            password_salt: salt,
+          })
+          .select()
+          .single();
+
+        if (newAdmin) {
+          const token = signSession({ studentId: newAdmin.id, role: 'admin' });
+          return res.json({
+            sessionToken: token,
+            admin: { id: newAdmin.id, full_name: newAdmin.full_name, email: newAdmin.email },
+          });
+        }
+      }
+    }
+
     return res.status(401).json({ error: 'Invalid admin ID or password.' });
   }
 

@@ -87,18 +87,22 @@ alter table holidays enable row level security;
 -- are ever used to query directly (e.g. Supabase Realtime subscriptions from the admin
 -- dashboard). Students should never receive the service_role key.
 
+drop policy if exists "students read own row" on students;
 create policy "students read own row"
   on students for select
   using (auth.uid() = id);
 
+drop policy if exists "students read own attendance" on attendance;
 create policy "students read own attendance"
   on attendance for select
   using (auth.uid() = student_id);
 
+drop policy if exists "admins read everything - locations" on locations;
 create policy "admins read everything - locations"
   on locations for select
   using (true); -- location list is public-ish (needed to render maps); tighten if desired
 
+drop policy if exists "no direct client writes to attendance" on attendance;
 create policy "no direct client writes to attendance"
   on attendance for insert
   with check (false); -- all writes go through the backend's validated /api/attendance endpoints

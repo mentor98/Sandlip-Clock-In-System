@@ -1,27 +1,22 @@
 {
   "version": 2,
   "outputDirectory": "dist",
-  "cleanUrls": true,
-  "trailingSlash": false,
-  "routes": [
+  "rewrites": [
     {
-      "src": "/admin/(.*)",
-      "dest": "/admin/$1"
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
     },
     {
-      "src": "/admin",
-      "dest": "/admin/index.html"
+      "source": "/admin",
+      "destination": "/admin/index.html"
     },
     {
-      "src": "/api/(.*)",
-      "dest": "/api"
+      "source": "/admin/(.*)",
+      "destination": "/admin/index.html"
     },
     {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }

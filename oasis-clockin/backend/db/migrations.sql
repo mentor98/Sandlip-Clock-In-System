@@ -43,6 +43,7 @@ create table if not exists webauthn_challenges (
   created_at timestamptz not null default now()
 );
 alter table webauthn_challenges enable row level security;
+drop policy if exists "no direct client access to challenges" on webauthn_challenges;
 create policy "no direct client access to challenges"
   on webauthn_challenges for all using (false);
 
@@ -57,6 +58,7 @@ create table if not exists admin_accounts (
   created_at timestamptz not null default now()
 );
 alter table admin_accounts enable row level security;
+drop policy if exists "no direct client access to admin_accounts" on admin_accounts;
 create policy "no direct client access to admin_accounts"
   on admin_accounts for all using (false);
 
@@ -77,6 +79,7 @@ create table if not exists organization_config (
   updated_at timestamptz not null default now()
 );
 alter table organization_config enable row level security;
+drop policy if exists "no direct client access to org_config" on organization_config;
 create policy "no direct client access to org_config"
   on organization_config for all using (false);
 
@@ -89,6 +92,7 @@ create table if not exists approved_networks (
   created_at timestamptz not null default now()
 );
 alter table approved_networks enable row level security;
+drop policy if exists "no direct client access to approved_networks" on approved_networks;
 create policy "no direct client access to approved_networks"
   on approved_networks for all using (false);
 
@@ -110,6 +114,7 @@ create table if not exists attendance_sessions (
 alter table attendance_sessions
   add column if not exists on_time_until time default '09:00';
 alter table attendance_sessions enable row level security;
+drop policy if exists "no direct client access to sessions" on attendance_sessions;
 create policy "no direct client access to sessions"
   on attendance_sessions for all using (false);
 
