@@ -59,8 +59,18 @@ app.use('/api/organization', organizationRoutes);
 app.use('/api/sessions', sessionRoutes);
 
 // Static assets serving
-const adminDistPath = path.join(__dirname, '../../admin-dashboard/dist');
-const studentPwaPath = path.join(__dirname, '../../student-pwa');
+let adminDistPath = path.join(__dirname, '../../admin-dashboard/dist');
+let studentPwaPath = path.join(__dirname, '../../student-pwa');
+
+if (!fs.existsSync(adminDistPath)) {
+  const rootDistAdmin = path.join(__dirname, '../../../dist/admin');
+  if (fs.existsSync(rootDistAdmin)) adminDistPath = rootDistAdmin;
+}
+
+if (!fs.existsSync(studentPwaPath)) {
+  const rootDistPwa = path.join(__dirname, '../../../dist');
+  if (fs.existsSync(rootDistPwa)) studentPwaPath = rootDistPwa;
+}
 
 if (fs.existsSync(adminDistPath)) {
   app.use('/admin', express.static(adminDistPath));

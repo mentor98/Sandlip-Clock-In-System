@@ -14,8 +14,8 @@
   let newLabel = '';
 
   // Form fields
-  let name = '', address = '', latitude = '6.5244', longitude = '3.3792';
-  let attendanceRadius = 150;
+  let name = 'Sandlip Oasis', address = 'Sandlip Oasis Campus', latitude = '8.928084', longitude = '11.330753';
+  let attendanceRadius = 200;
   let requireGps = true;
   let requireDeviceAuth = true;
   let requireIpMatch = true;
@@ -27,7 +27,7 @@
   let earlyThresholdMinutes = 15;
   let wifiMac = 'be:64:b4:14:4d:67';
   let wifiIp = '192.168.1.156';
-  let wifiSsid = 'Oasis-Campus-WiFi';
+  let wifiSsid = 'Sandlip-Oasis-WiFi';
 
   let mapElement;
   let map = null;
@@ -36,9 +36,9 @@
 
   function initMap(lat, lng, radius) {
     if (!mapElement || map) return;
-    const initialLat = parseFloat(lat) || 6.5244;
-    const initialLng = parseFloat(lng) || 3.3792;
-    const initialRadius = parseInt(radius, 10) || 150;
+    const initialLat = parseFloat(lat) || 8.9280843;
+    const initialLng = parseFloat(lng) || 11.3307533;
+    const initialRadius = parseInt(radius, 10) || 200;
 
     map = L.map(mapElement, {
       center: [initialLat, initialLng],

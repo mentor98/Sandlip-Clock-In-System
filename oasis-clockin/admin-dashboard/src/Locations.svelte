@@ -5,7 +5,7 @@
   import Icon from './lib/Icon.svelte';
 
   let locations = [];
-  let name = '', latitude = '6.5244', longitude = '3.3792', radius = 50;
+  let name = 'Sandlip Oasis - Main Complex', latitude = '8.928084', longitude = '11.330753', radius = 200;
   let activeStart = '', activeEnd = '';
   let error = '';
   let successMsg = '';
@@ -30,8 +30,8 @@
   function initMap() {
     if (!mapElement || map) return;
     map = L.map(mapElement, {
-      center: [parseFloat(latitude) || 6.5244, parseFloat(longitude) || 3.3792],
-      zoom: 14,
+      center: [parseFloat(latitude) || 8.9280843, parseFloat(longitude) || 11.3307533],
+      zoom: 15,
     });
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -42,9 +42,9 @@
     locationLayerGroup = L.layerGroup().addTo(map);
 
     // Draft pin for new location
-    draftMarker = L.marker([parseFloat(latitude) || 6.5244, parseFloat(longitude) || 3.3792], { draggable: true }).addTo(map);
-    draftCircle = L.circle([parseFloat(latitude) || 6.5244, parseFloat(longitude) || 3.3792], {
-      radius: parseInt(radius, 10) || 50,
+    draftMarker = L.marker([parseFloat(latitude) || 8.9280843, parseFloat(longitude) || 11.3307533], { draggable: true }).addTo(map);
+    draftCircle = L.circle([parseFloat(latitude) || 8.9280843, parseFloat(longitude) || 11.3307533], {
+      radius: parseInt(radius, 10) || 200,
       color: '#0f766e',
       fillColor: '#0f766e',
       fillOpacity: 0.2,

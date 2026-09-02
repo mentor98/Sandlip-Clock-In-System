@@ -148,13 +148,13 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
 function getPosition() {
   return new Promise((resolve) => {
     if (!navigator.geolocation) {
-      return resolve({ latitude: 6.5244, longitude: 3.3792, accuracy: 15 });
+      return resolve({ latitude: 8.9280843, longitude: 11.3307533, accuracy: 15 });
     }
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy }),
       () => {
-        // Fallback default coordinates if browser permission prompt is blocked in sandbox iframe
-        resolve({ latitude: 6.5244, longitude: 3.3792, accuracy: 15 });
+        // Fallback default coordinates for Sandlip Oasis if browser permission prompt is blocked in sandbox iframe
+        resolve({ latitude: 8.9280843, longitude: 11.3307533, accuracy: 15 });
       },
       { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
     );
