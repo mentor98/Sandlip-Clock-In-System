@@ -5,7 +5,7 @@
   "description": "Oasis ClockIn Attendance Platform with Admin Dashboard, Student PWA, and Express Backend",
   "main": "oasis-clockin/backend/src/index.js",
   "scripts": {
-    "dev": "node oasis-clockin/backend/src/index.js",
+    "dev": "npm run build && node oasis-clockin/backend/src/index.js",
     "build": "npm --prefix oasis-clockin/admin-dashboard run build",
     "build:admin": "npm --prefix oasis-clockin/admin-dashboard run build",
     "lint": "node -c oasis-clockin/backend/src/index.js",
