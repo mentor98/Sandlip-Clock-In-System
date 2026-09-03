@@ -1,19 +1,25 @@
-// Minimal offline-queue service worker.
+// Minimal offline-queue service worker for Oasis ClockIn Student PWA.
 // Caches the app shell and, when a clock-in/out POST fails due to no network,
 // stores it in IndexedDB via the Background Sync API and replays it once
 // connectivity returns.
 
-const CACHE_NAME = 'oasis-clockin-v5';
+const CACHE_NAME = 'oasis-clockin-v8';
 const SHELL = ['/', 'index.html', 'style.css', 'app.js', 'manifest.json'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).catch((err) => {
+      console.warn('SW cache.addAll notice:', err);
+    })
+  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
   );
   self.clients.claim();
 });
@@ -21,10 +27,34 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
-  // Queue failed attendance POSTs for background sync.
-  if (request.method === 'POST' && (request.url.includes('/api/attendance/') || request.url.includes('/api/auth/clockin-direct'))) {
+  // Only handle GET and POST
+  if (request.method !== 'GET' && request.method !== 'POST') {
+    return;
+  }
+
+  let requestUrl;
+  try {
+    requestUrl = new URL(request.url);
+  } catch (_) {
+    return;
+  }
+
+  const { pathname } = requestUrl;
+
+  // 1. CRITICAL: NEVER intercept Admin site or admin assets
+  if (pathname.startsWith('/admin')) {
+    return; // Direct native network fetch
+  }
+
+  // 2. CRITICAL: NEVER intercept Server-Sent Events streams (keeps connection open)
+  if (pathname.includes('/stream')) {
+    return; // Direct native network fetch
+  }
+
+  // 3. Handle offline attendance queue for Student PWA POSTs only
+  if (request.method === 'POST' && (pathname.includes('/api/attendance/') || pathname === '/api/auth/clockin-direct')) {
     event.respondWith(
-      fetch(request.clone()).catch(async (err) => {
+      fetch(request.clone()).catch(async () => {
         try {
           const body = await request.clone().json();
           await queueRequest({ url: request.url, method: 'POST', headers: [...request.headers], body });
@@ -63,23 +93,42 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first strategy for app shell and scripts so updates apply immediately
-  if (request.mode === 'navigate' || request.url.endsWith('.js') || request.url.endsWith('.html') || request.url.endsWith('.css')) {
+  // 4. For ALL other /api/ requests: NEVER intercept with Service Worker.
+  // Allow the browser to fetch directly from the network.
+  if (pathname.startsWith('/api/')) {
+    return; // Direct native network fetch
+  }
+
+  // 5. Network-first strategy for app shell assets so code updates apply immediately
+  if (request.mode === 'navigate' || pathname.endsWith('.js') || pathname.endsWith('.html') || pathname.endsWith('.css')) {
     event.respondWith(
       fetch(request)
         .then((response) => {
           if (response && response.status === 200 && response.type === 'basic') {
             const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)).catch(() => {});
           }
           return response;
         })
-        .catch(() => caches.match(request))
+        .catch(async () => {
+          const cached = await caches.match(request);
+          if (cached) return cached;
+          if (request.mode === 'navigate') {
+            return caches.match('/') || caches.match('/index.html');
+          }
+          return new Response('', { status: 503, statusText: 'Offline' });
+        })
     );
     return;
   }
 
-  event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
+  // 6. Safe cache-first for other static assets (e.g. icons, manifests) with error handling
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).catch(() => new Response('', { status: 404 }));
+    })
+  );
 });
 
 self.addEventListener('sync', (event) => {

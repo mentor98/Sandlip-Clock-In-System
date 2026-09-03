@@ -55,8 +55,18 @@ router.get('/stream', (req, res) => {
     }
   }, 12000);
 
+  // Graceful serverless cycling: close cleanly after 50 seconds before Vercel lambda limits.
+  // Standard EventSource automatically reconnects cleanly with zero errors.
+  const serverlessTimeout = setTimeout(() => {
+    try {
+      res.write(`event: reconnect\ndata: ${JSON.stringify({ reason: 'cycle' })}\n\n`);
+      res.end();
+    } catch (_) {}
+  }, 50000);
+
   req.on('close', () => {
     clearInterval(heartbeat);
+    clearTimeout(serverlessTimeout);
     eventBus.removeListener('realtime_event', onRealtimeEvent);
     eventBus.removeListener('attendance_recorded', onAttendanceRecorded);
   });

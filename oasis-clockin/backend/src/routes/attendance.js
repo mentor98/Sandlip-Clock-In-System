@@ -166,39 +166,75 @@ router.post('/clock-out', requireAuth, makeHandler('clock_out'));
 
 // GET /api/attendance/me — student's history
 router.get('/me', requireAuth, async (req, res) => {
-  const { data, error } = await supabaseAdmin
-    .from('attendance')
-    .select('*, locations(name)')
-    .eq('student_id', req.user.sub)
-    .order('recorded_at', { ascending: false })
-    .limit(50);
+  try {
+    let { data, error } = await supabaseAdmin
+      .from('attendance')
+      .select('*, locations(name)')
+      .eq('student_id', req.user.sub)
+      .order('recorded_at', { ascending: false })
+      .limit(50);
 
-  if (error) return res.status(500).json({ error: 'Could not load attendance history.' });
-  res.json({ attendance: data });
+    if (error) {
+      // Fallback query without relation in case locations relation is not configured in Supabase
+      const fallback = await supabaseAdmin
+        .from('attendance')
+        .select('*')
+        .eq('student_id', req.user.sub)
+        .order('recorded_at', { ascending: false })
+        .limit(50);
+      data = fallback.data || [];
+    }
+    res.json({ attendance: data || [] });
+  } catch (err) {
+    console.warn('Attendance /me load error:', err.message);
+    res.json({ attendance: [] });
+  }
 });
 
 // GET /api/attendance/status — student checks current day status
 router.get('/status', requireAuth, async (req, res) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const currentHour = new Date().getHours();
-  const { data } = await supabaseAdmin
-    .from('attendance')
-    .select('type, recorded_at, locations(name), verification_status, risk_score')
-    .eq('student_id', req.user.sub)
-    .gte('recorded_at', today)
-    .order('recorded_at', { ascending: false });
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const currentHour = new Date().getHours();
+    let { data, error } = await supabaseAdmin
+      .from('attendance')
+      .select('type, recorded_at, locations(name), verification_status, risk_score')
+      .eq('student_id', req.user.sub)
+      .gte('recorded_at', today)
+      .order('recorded_at', { ascending: false });
 
-  const clockedIn = (data || []).some(r => r.type === 'clock_in');
-  const clockedOut = (data || []).some(r => r.type === 'clock_out');
-  const canClockOut = clockedIn && !clockedOut && currentHour >= 17;
+    if (error) {
+      const fallback = await supabaseAdmin
+        .from('attendance')
+        .select('type, recorded_at, verification_status, risk_score')
+        .eq('student_id', req.user.sub)
+        .gte('recorded_at', today)
+        .order('recorded_at', { ascending: false });
+      data = fallback.data || [];
+    }
 
-  res.json({
-    clockedIn,
-    clockedOut,
-    canClockOut,
-    currentHour,
-    records: data || [],
-  });
+    const records = data || [];
+    const clockedIn = records.some(r => r.type === 'clock_in');
+    const clockedOut = records.some(r => r.type === 'clock_out');
+    const canClockOut = clockedIn && !clockedOut && currentHour >= 17;
+
+    res.json({
+      clockedIn,
+      clockedOut,
+      canClockOut,
+      currentHour,
+      records,
+    });
+  } catch (err) {
+    console.warn('Attendance /status error:', err.message);
+    res.json({
+      clockedIn: false,
+      clockedOut: false,
+      canClockOut: false,
+      currentHour: new Date().getHours(),
+      records: [],
+    });
+  }
 });
 
 module.exports = router;

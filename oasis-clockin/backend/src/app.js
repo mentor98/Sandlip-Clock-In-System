@@ -25,6 +25,24 @@ app.use(
 app.use(express.json());
 app.use(generalLimiter);
 
+// Serverless / proxy route prefix normalizer: if a reverse proxy or serverless rewrite
+// forwards '/auth/...' instead of '/api/auth/...', normalize req.url so Express router matches
+app.use((req, _res, next) => {
+  if (req.url && !req.url.startsWith('/api') && (
+    req.url.startsWith('/auth') ||
+    req.url.startsWith('/attendance') ||
+    req.url.startsWith('/admin') ||
+    req.url.startsWith('/admin-auth') ||
+    req.url.startsWith('/organization') ||
+    req.url.startsWith('/sessions') ||
+    req.url.startsWith('/health') ||
+    req.url.startsWith('/debug')
+  )) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  }
+  next();
+});
+
 // Initialize scheduled jobs if possible
 try {
   initSchedules();

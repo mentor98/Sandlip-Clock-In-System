@@ -69,8 +69,17 @@ router.get('/:id/stream', (req, res) => {
     }
   }, 15000);
 
+  // Graceful serverless cycling: close cleanly after 50 seconds before Vercel lambda limits
+  const serverlessTimeout = setTimeout(() => {
+    try {
+      res.write(`event: reconnect\ndata: ${JSON.stringify({ reason: 'cycle' })}\n\n`);
+      res.end();
+    } catch (_) {}
+  }, 50000);
+
   req.on('close', () => {
     clearInterval(heartbeat);
+    clearTimeout(serverlessTimeout);
     eventBus.removeListener('attendance_recorded', onAttendance);
   });
 });
