@@ -5,6 +5,7 @@ const { supabaseAdmin } = require('../config/supabase');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { generateLocationToken } = require('../utils/qrToken');
 const { signSession } = require('../config/jwt');
+const { findSession, generateSessionQrPayload } = require('../utils/sharedSessions');
 
 const router = express.Router();
 
@@ -224,56 +225,18 @@ router.post('/sessions/:id/generate-qr', async (req, res) => {
   const sessionId = req.params.id;
   const adminIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '127.0.0.1';
 
-  const { data: session } = await supabaseAdmin
-    .from('attendance_sessions')
-    .select('id, title, location_id, locations(name)')
-    .eq('id', sessionId)
-    .single();
-
-  if (!session) return res.status(404).json({ error: 'Attendance session not found.' });
-
-  const locationId = session.location_id;
-  const nonce = crypto.randomBytes(16).toString('hex');
-
-  // Update session & location nonce
-  await supabaseAdmin
-    .from('attendance_sessions')
-    .update({ admin_ip: adminIp, active_qr_nonce: nonce })
-    .eq('id', sessionId);
-
-  if (locationId) {
-    await supabaseAdmin
-      .from('locations')
-      .update({ active_qr_nonce: nonce, qr_generated_at: new Date().toISOString(), admin_ip: adminIp })
-      .eq('id', locationId);
+  const session = await findSession(sessionId);
+  if (!session) {
+    return res.status(404).json({ error: 'Attendance session not found.' });
   }
 
-  const token = generateLocationToken({
-    locationId,
-    nonce,
-    adminId: req.user?.sub,
-    adminIp,
-    sessionId,
-  });
-
-  const pwaBase = process.env.RP_ORIGIN_PWA || 'http://localhost:3000';
-  const deepLink = `${pwaBase}?location_id=${locationId}&session_id=${sessionId}&token=${encodeURIComponent(token)}`;
-
-  const png = await bwipjs.toBuffer({
-    bcid: 'qrcode',
-    text: deepLink,
-    scale: 8,
-    includetext: false,
-  });
-
-  res.json({
-    qr_png_base64: png.toString('base64'),
-    session_title: session.title,
-    location_name: session.locations?.name || 'Classroom',
-    nonce,
-    admin_ip: adminIp,
-    expires_in_seconds: parseInt(process.env.QR_TOKEN_TTL_SECONDS || '25', 10),
-  });
+  try {
+    const payload = await generateSessionQrPayload(session, adminIp, req.user?.sub);
+    res.json(payload);
+  } catch (err) {
+    console.error('Session QR generation error:', err);
+    res.status(500).json({ error: 'Failed to generate session QR code: ' + err.message });
+  }
 });
 
 // Keep old SSE endpoint for backwards compatibility but redirect to new approach
@@ -288,7 +251,7 @@ router.get('/devices', async (req, res) => {
   try {
     let query = supabaseAdmin
       .from('devices')
-      .select('*, students(full_name, student_id, email, registered_ip, registered_mac)')
+      .select('*, students(full_name, student_id, email)')
       .order('registered_at', { ascending: false });
     if (student_id) query = query.eq('student_id', student_id);
     if (status) query = query.eq('status', status);
@@ -392,7 +355,7 @@ router.patch('/devices/:id/reactivate', async (req, res) => {
 router.get('/students', async (req, res) => {
   const { search } = req.query;
   try {
-    let query = supabaseAdmin.from('students').select('*, devices(id, revoked_at, registered_at, ip_address, mac_address, user_agent, last_seen_at, webauthn_credential_id, status)');
+    let query = supabaseAdmin.from('students').select('*, devices(id, revoked_at, registered_at, webauthn_credential_id)');
     if (search) {
       const s = String(search).trim();
       query = query.or(`full_name.ilike.%${s}%,student_id.ilike.%${s}%,email.ilike.%${s}%`);
@@ -518,7 +481,7 @@ router.get('/attendance', async (req, res) => {
   try {
     let query = supabaseAdmin
       .from('attendance')
-      .select('*, students(full_name, student_id, registered_ip, registered_mac), locations(name)')
+      .select('*, students(full_name, student_id, email), locations(name)')
       .order('recorded_at', { ascending: false })
       .limit(500);
     if (from) query = query.gte('recorded_at', from);
@@ -580,7 +543,7 @@ router.get('/attendance/absent', async (req, res) => {
   const { session_id, from, to } = req.query;
   let query = supabaseAdmin
     .from('attendance')
-    .select('*, students(full_name, student_id, registered_ip, registered_mac), locations(name)')
+    .select('*, students(full_name, student_id, email), locations(name)')
     .eq('verification_status', 'AUTO_ABSENT')
     .order('marked_absent_at', { ascending: false });
   

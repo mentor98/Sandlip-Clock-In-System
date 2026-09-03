@@ -203,11 +203,23 @@ async function validateAttendance(params) {
   const securityAnomalies = [];
 
   // ── 1. Student account verification ─────────────────────────────────────────
-  const { data: student } = await supabaseAdmin
+  let student = null;
+  const { data: s1, error: err1 } = await supabaseAdmin
     .from('students')
     .select('id, full_name, student_id, email, status, registered_mac, registered_ip')
     .eq('id', studentId)
-    .single();
+    .maybeSingle();
+
+  if (s1) {
+    student = s1;
+  } else if (err1) {
+    const { data: s2 } = await supabaseAdmin
+      .from('students')
+      .select('id, full_name, student_id, email, status')
+      .eq('id', studentId)
+      .maybeSingle();
+    if (s2) student = s2;
+  }
 
   if (!student) {
     criticalFailures.push('Student account not found.');
@@ -254,11 +266,23 @@ async function validateAttendance(params) {
   const requiredWifiIp = org?.wifi_ip || '192.168.1.156';
 
   // ── 3. Device & Hardware MAC verification ───────────────────────────────────
-  const { data: device } = await supabaseAdmin
+  let device = null;
+  const { data: d1, error: dErr1 } = await supabaseAdmin
     .from('devices')
     .select('id, student_id, status, revoked_at, ip_address, user_agent, last_seen_at, mac_address, webauthn_credential_id')
     .eq('id', deviceId)
-    .single();
+    .maybeSingle();
+
+  if (d1) {
+    device = d1;
+  } else if (dErr1) {
+    const { data: d2 } = await supabaseAdmin
+      .from('devices')
+      .select('id, student_id, revoked_at, webauthn_credential_id')
+      .eq('id', deviceId)
+      .maybeSingle();
+    if (d2) device = d2;
+  }
 
   const clientMacNorm = normalizeMac(deviceMac || device?.mac_address || student?.registered_mac || 'be:64:b4:14:4d:67');
   const targetMacNorm = normalizeMac(requiredWifiMac);

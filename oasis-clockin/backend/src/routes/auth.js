@@ -92,20 +92,33 @@ router.post('/register', async (req, res) => {
     }
 
     // Create fresh authorized device
-    await supabaseAdmin
-      .from('devices')
-      .insert({
-        student_id: existing.id,
-        mac_address: clientMac,
-        ip_address: clientIp,
-        webauthn_credential_id: `cred-${Date.now()}`,
-        public_key: 'direct-auth-fallback',
-        counter: 1,
-        status: 'AUTHORIZED',
-        user_agent: req.headers['user-agent'] || 'Direct Client',
-        last_seen_at: new Date().toISOString(),
-        registered_at: new Date().toISOString(),
-      });
+    try {
+      const devRes = await supabaseAdmin
+        .from('devices')
+        .insert({
+          student_id: existing.id,
+          mac_address: clientMac,
+          ip_address: clientIp,
+          webauthn_credential_id: `cred-${Date.now()}`,
+          public_key: 'direct-auth-fallback',
+          counter: 1,
+          status: 'AUTHORIZED',
+          user_agent: req.headers['user-agent'] || 'Direct Client',
+          last_seen_at: new Date().toISOString(),
+          registered_at: new Date().toISOString(),
+        });
+      if (devRes && devRes.error) {
+        await supabaseAdmin
+          .from('devices')
+          .insert({
+            student_id: existing.id,
+            webauthn_credential_id: `cred-${Date.now()}`,
+            public_key: 'direct-auth-fallback',
+            counter: 1,
+            registered_at: new Date().toISOString(),
+          });
+      }
+    } catch (_) {}
 
     existing.registered_ip = clientIp;
     existing.registered_mac = clientMac;
@@ -172,8 +185,8 @@ router.post('/register', async (req, res) => {
           registered_at: new Date().toISOString(),
         });
       if (devRes && devRes.error) {
-        console.warn('Initial device insert notice, retrying without mac_address:', devRes.error.message || devRes.error);
-        await supabaseAdmin
+        console.warn('Initial device insert notice, retrying with core columns:', devRes.error.message || devRes.error);
+        const retry1 = await supabaseAdmin
           .from('devices')
           .insert({
             student_id: student.id,
@@ -186,6 +199,17 @@ router.post('/register', async (req, res) => {
             last_seen_at: new Date().toISOString(),
             registered_at: new Date().toISOString(),
           });
+        if (retry1 && retry1.error) {
+          await supabaseAdmin
+            .from('devices')
+            .insert({
+              student_id: student.id,
+              webauthn_credential_id: `cred-${Date.now()}`,
+              public_key: 'direct-auth-fallback',
+              counter: 1,
+              registered_at: new Date().toISOString(),
+            });
+        }
       }
     } catch (dErr) {
       console.warn('Device binding catch warning:', dErr.message);

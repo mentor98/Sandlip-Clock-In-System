@@ -163,7 +163,7 @@ router.post('/networks', async (req, res) => {
 
   const { data, error } = await supabaseAdmin
     .from('approved_networks')
-    .insert({ cidr, label: label || cidr, created_by: req.user.sub })
+    .insert({ cidr, label: label || cidr, created_by: null })
     .select()
     .single();
   if (error) {

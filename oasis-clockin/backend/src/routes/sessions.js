@@ -2,41 +2,15 @@ const crypto = require('crypto');
 const express = require('express');
 const { supabaseAdmin } = require('../config/supabase');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const {
+  inMemorySessions,
+  toValidUuid,
+  findSession,
+  ensureValidLocation,
+  generateSessionQrPayload,
+} = require('../utils/sharedSessions');
 
 const router = express.Router();
-
-function toValidUuid(val, defaultUuid = 'c0000000-0000-0000-0000-000000000001') {
-  if (!val || typeof val !== 'string') return defaultUuid;
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) {
-    return val;
-  }
-  if (/^adm-[0-9a-fA-F-]+$/.test(val)) {
-    return 'a0000000-0000-0000-0000-000000000001';
-  }
-  if (/^loc-[0-9a-fA-F-]+$/.test(val)) {
-    return 'c0000000-0000-0000-0000-000000000001';
-  }
-  if (/^stu-[0-9a-fA-F-]+$/.test(val)) {
-    return 'b0000000-0000-0000-0000-000000000001';
-  }
-  return defaultUuid;
-}
-
-// In-memory sessions store to guarantee resilience if Supabase table is not yet provisioned
-const inMemorySessions = [
-  {
-    id: 'e0000000-0000-0000-0000-000000000001',
-    title: 'Morning Class & Lab Session',
-    location_id: 'c0000000-0000-0000-0000-000000000001',
-    locations: { name: 'Sandlip Oasis - Lecture & Hall Complex' },
-    created_by: 'a0000000-0000-0000-0000-000000000001',
-    status: 'ACTIVE',
-    started_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-    ends_at: new Date(Date.now() + 3600000 * 8).toISOString(),
-    closed_at: null,
-    created_at: new Date().toISOString(),
-  },
-];
 
 // ── Public: student reads active session ──────────────────────────────────────
 
@@ -111,7 +85,10 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'title is required.' });
   }
 
-  const cleanLocId = toValidUuid(location_id, 'c0000000-0000-0000-0000-000000000001');
+  // Ensure location exists in Supabase so foreign key references locations(id) succeeds
+  const validLoc = await ensureValidLocation(location_id);
+  const cleanLocId = validLoc.id;
+  const locName = validLoc.name || 'Sandlip Oasis Campus';
   const cleanCreatedBy = toValidUuid(req.user?.sub, 'a0000000-0000-0000-0000-000000000001');
 
   // Close existing active sessions in memory
@@ -130,36 +107,6 @@ router.post('/', async (req, res) => {
       .eq('status', 'ACTIVE');
   } catch (err) {
     console.warn('Close active sessions notice:', err.message);
-  }
-
-  // Ensure location exists in Supabase so foreign key references locations(id) succeeds
-  let locName = 'Sandlip Oasis - Main Complex';
-  try {
-    const { data: loc } = await supabaseAdmin
-      .from('locations')
-      .select('name')
-      .eq('id', cleanLocId)
-      .single();
-
-    if (loc && loc.name) {
-      locName = loc.name;
-    } else {
-      await supabaseAdmin.from('locations').upsert(
-        {
-          id: cleanLocId,
-          name: locName,
-          latitude: 8.9280843,
-          longitude: 11.3307533,
-          geofence_radius_m: 200,
-          active_start: '06:00:00',
-          active_end: '22:00:00',
-          created_by: cleanCreatedBy,
-        },
-        { onConflict: 'id' }
-      );
-    }
-  } catch (err) {
-    console.warn('Ensure location notice:', err.message);
   }
 
   const nowIso = new Date().toISOString();
@@ -189,7 +136,7 @@ router.post('/', async (req, res) => {
         id: newSessionId,
         title,
         location_id: cleanLocId,
-        created_by: cleanCreatedBy,
+        created_by: null,
         status: 'ACTIVE',
         started_at: nowIso,
         ends_at: ends_at || null,
@@ -207,7 +154,7 @@ router.post('/', async (req, res) => {
           id: newSessionId,
           title,
           location_id: cleanLocId,
-          created_by: cleanCreatedBy,
+          created_by: null,
           status: 'ACTIVE',
           started_at: nowIso,
           ends_at: ends_at || null,
@@ -237,6 +184,29 @@ router.post('/', async (req, res) => {
   } catch (_) {}
 
   res.status(201).json({ session: resultSession });
+});
+
+// POST /api/sessions/:id/generate-qr — generate live QR projector code
+router.post('/:id/generate-qr', async (req, res) => {
+  const sessionId = req.params.id;
+  const adminIp =
+    req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+    req.ip ||
+    req.socket?.remoteAddress ||
+    '127.0.0.1';
+
+  const session = await findSession(sessionId);
+  if (!session) {
+    return res.status(404).json({ error: 'Attendance session not found.' });
+  }
+
+  try {
+    const payload = await generateSessionQrPayload(session, adminIp, req.user?.sub);
+    res.json(payload);
+  } catch (err) {
+    console.error('Session QR generation error:', err);
+    res.status(500).json({ error: 'Failed to generate session QR code: ' + err.message });
+  }
 });
 
 // PATCH /api/sessions/:id/close — admin closes a session

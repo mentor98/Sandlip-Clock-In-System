@@ -119,7 +119,12 @@
     error = '';
     clearInterval(qrTimer);
     try {
-      const res = await api(`/admin/sessions/${s.id}/generate-qr`, { method: 'POST' });
+      let res;
+      try {
+        res = await api(`/admin/sessions/${s.id}/generate-qr`, { method: 'POST' });
+      } catch (_e1) {
+        res = await api(`/sessions/${s.id}/generate-qr`, { method: 'POST' });
+      }
       qrSrc = `data:image/png;base64,${res.qr_png_base64}`;
       qrExpiry = res.expires_in_seconds || 25;
       qrAdminIp = res.admin_ip || '127.0.0.1';
