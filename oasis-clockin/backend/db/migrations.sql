@@ -81,11 +81,29 @@ create table if not exists organization_config (
   require_gps boolean not null default true,
   require_device_auth boolean not null default true,
   require_ip_match boolean not null default false,
+  require_wifi_match boolean not null default true,
   require_qr boolean not null default false,
   ip_check_mode text not null default 'warn', -- off | warn | strict
+  work_start_time text default '08:00',
+  grace_period_minutes integer default 15,
+  early_threshold_minutes integer default 15,
+  wifi_mac text default 'be:64:b4:14:4d:67',
+  wifi_ip text default '192.168.1.156',
+  wifi_ssid text default 'Sandlip-Oasis-WiFi',
   status text not null default 'active',
   updated_at timestamptz not null default now()
 );
+
+-- Ensure all schedule and WiFi columns exist if table was previously created
+alter table organization_config
+  add column if not exists work_start_time text default '08:00',
+  add column if not exists grace_period_minutes integer default 15,
+  add column if not exists early_threshold_minutes integer default 15,
+  add column if not exists require_wifi_match boolean default true,
+  add column if not exists wifi_mac text default 'be:64:b4:14:4d:67',
+  add column if not exists wifi_ip text default '192.168.1.156',
+  add column if not exists wifi_ssid text default 'Sandlip-Oasis-WiFi';
+
 alter table organization_config enable row level security;
 drop policy if exists "no direct client access to org_config" on organization_config;
 create policy "no direct client access to org_config"
@@ -127,14 +145,48 @@ create policy "no direct client access to sessions"
   on attendance_sessions for all using (false);
 
 -- ── 9. Realtime publications ──────────────────────────────────────────────
--- Enables Supabase Realtime for admin dashboard live updates
-alter publication supabase_realtime add table devices;
-alter publication supabase_realtime add table students;
-alter publication supabase_realtime add table attendance;
-alter publication supabase_realtime add table audit_log;
-alter publication supabase_realtime add table attendance_sessions;
+-- Enables Supabase Realtime for admin dashboard live updates (safely checks if already in publication)
+do $$
+begin
+  alter publication supabase_realtime add table devices;
+exception when others then null;
+end $$;
 
--- ── 10. Useful indexes ────────────────────────────────────────────────────
+do $$
+begin
+  alter publication supabase_realtime add table students;
+exception when others then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table attendance;
+exception when others then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table audit_log;
+exception when others then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table attendance_sessions;
+exception when others then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table organization_config;
+exception when others then null;
+end $$;
+
+-- ── 10. Reload PostgREST schema cache ─────────────────────────────────────
+-- Notifies PostgREST to immediately refresh its schema cache for new columns
+notify pgrst, 'reload schema';
+
+-- ── 11. Useful indexes ────────────────────────────────────────────────────
 create index if not exists idx_devices_student_id on devices(student_id);
 create index if not exists idx_devices_status on devices(status);
 create index if not exists idx_attendance_student_date on attendance(student_id, recorded_at);

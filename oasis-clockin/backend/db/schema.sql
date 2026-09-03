@@ -73,6 +73,66 @@ create table if not exists audit_log (
   created_at timestamptz not null default now()
 );
 
+create table if not exists admin_accounts (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  admin_id text unique not null,
+  email text unique not null,
+  password_hash text not null,
+  password_salt text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists organization_config (
+  id text primary key default 'default',
+  name text not null,
+  address text,
+  latitude double precision,
+  longitude double precision,
+  attendance_radius_m integer not null default 150,
+  require_gps boolean not null default true,
+  require_device_auth boolean not null default true,
+  require_ip_match boolean not null default false,
+  require_wifi_match boolean not null default true,
+  require_qr boolean not null default false,
+  ip_check_mode text not null default 'warn', -- off | warn | strict
+  work_start_time text default '08:00',
+  grace_period_minutes integer default 15,
+  early_threshold_minutes integer default 15,
+  wifi_mac text default 'be:64:b4:14:4d:67',
+  wifi_ip text default '192.168.1.156',
+  wifi_ssid text default 'Sandlip-Oasis-WiFi',
+  status text not null default 'active',
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists approved_networks (
+  id uuid primary key default gen_random_uuid(),
+  cidr text unique not null,
+  label text,
+  created_by uuid references students(id),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists attendance_sessions (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  location_id uuid references locations(id),
+  created_by uuid,
+  status text not null default 'ACTIVE', -- ACTIVE | CLOSED | EXPIRED
+  started_at timestamptz not null default now(),
+  ends_at timestamptz,
+  closed_at timestamptz,
+  on_time_until time default '09:00',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists webauthn_challenges (
+  key text primary key,
+  challenge text not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists holidays (
   id uuid primary key default gen_random_uuid(),
   date date not null,
@@ -85,6 +145,11 @@ alter table devices enable row level security;
 alter table locations enable row level security;
 alter table attendance enable row level security;
 alter table audit_log enable row level security;
+alter table admin_accounts enable row level security;
+alter table organization_config enable row level security;
+alter table approved_networks enable row level security;
+alter table attendance_sessions enable row level security;
+alter table webauthn_challenges enable row level security;
 alter table holidays enable row level security;
 
 -- The Express backend talks to Postgres using the service_role key (server-side only),

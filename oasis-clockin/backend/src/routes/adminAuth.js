@@ -118,7 +118,7 @@ router.post('/login', async (req, res) => {
         .single();
 
       const adminUser = newAdmin || {
-        id: 'adm-00000000-0000-0000-0000-000000000001',
+        id: 'a0000000-0000-0000-0000-000000000001',
         full_name: 'System Administrator',
         email: 'emmitechfx@gmail.com',
       };

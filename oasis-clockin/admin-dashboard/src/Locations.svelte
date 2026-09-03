@@ -170,12 +170,37 @@
   }
 
   function useMyLocation() {
-    navigator.geolocation.getCurrentPosition((pos) => {
-      latitude = pos.coords.latitude.toFixed(6);
-      longitude = pos.coords.longitude.toFixed(6);
-      if (map) map.panTo([parseFloat(latitude), parseFloat(longitude)]);
-      updateDraft(latitude, longitude, radius);
-    }, () => { error = 'Could not get device location.'; });
+    if (!navigator.geolocation) {
+      error = 'Geolocation is not supported by your browser.';
+      return;
+    }
+    error = '';
+    successMsg = 'Acquiring GPS position…';
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        latitude = pos.coords.latitude.toFixed(6);
+        longitude = pos.coords.longitude.toFixed(6);
+        if (map) map.panTo([parseFloat(latitude), parseFloat(longitude)]);
+        updateDraft(latitude, longitude, radius);
+        successMsg = `GPS coordinates acquired (±${Math.round(pos.coords.accuracy)}m)`;
+      },
+      () => {
+        navigator.geolocation.getCurrentPosition(
+          (pos2) => {
+            latitude = pos2.coords.latitude.toFixed(6);
+            longitude = pos2.coords.longitude.toFixed(6);
+            if (map) map.panTo([parseFloat(latitude), parseFloat(longitude)]);
+            updateDraft(latitude, longitude, radius);
+            successMsg = `GPS coordinates acquired (±${Math.round(pos2.coords.accuracy)}m)`;
+          },
+          (err2) => {
+            error = `Could not get device location (${err2.message || 'permission denied'}). You can also click the map or type coordinates.`;
+          },
+          { enableHighAccuracy: false, timeout: 6000 }
+        );
+      },
+      { enableHighAccuracy: true, timeout: 4000 }
+    );
   }
 
   async function generateQr(loc) {

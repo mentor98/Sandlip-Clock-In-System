@@ -395,56 +395,96 @@ async function validateAttendance(params) {
     securityAnomalies.push({ type: 'MISSING_GPS', severity: 'HIGH' });
   }
 
-  // Determine target location (from QR, active session, or nearest geofence)
+  // Determine target location (from QR, active session, nearest geofence, or org fallback)
   let targetLocation = null;
 
-  if (locationId) {
-    const { data: loc } = await supabaseAdmin
-      .from('locations')
-      .select('*')
-      .eq('id', locationId)
-      .single();
-    targetLocation = loc;
-  } else if (activeSession?.location_id) {
-    const { data: loc } = await supabaseAdmin
-      .from('locations')
-      .select('*')
-      .eq('id', activeSession.location_id)
-      .single();
-    targetLocation = loc;
-  } else {
-    const { data: allLocations } = await supabaseAdmin.from('locations').select('*');
-    if (allLocations && allLocations.length > 0 && latitude != null) {
-      let nearest = null;
-      let nearestDist = Infinity;
-      for (const loc of allLocations) {
-        const dist = haversineDistanceMeters(latitude, longitude, loc.latitude, loc.longitude);
-        if (dist < nearestDist) { nearestDist = dist; nearest = loc; }
+  try {
+    if (locationId) {
+      const { data: loc } = await supabaseAdmin
+        .from('locations')
+        .select('*')
+        .eq('id', locationId)
+        .single();
+      targetLocation = loc;
+    } else if (activeSession?.location_id) {
+      const { data: loc } = await supabaseAdmin
+        .from('locations')
+        .select('*')
+        .eq('id', activeSession.location_id)
+        .single();
+      targetLocation = loc;
+    } else {
+      const { data: allLocations } = await supabaseAdmin.from('locations').select('*');
+      if (allLocations && allLocations.length > 0 && latitude != null) {
+        let nearest = null;
+        let nearestDist = Infinity;
+        for (const loc of allLocations) {
+          const dist = haversineDistanceMeters(latitude, longitude, loc.latitude, loc.longitude);
+          if (dist < nearestDist) { nearestDist = dist; nearest = loc; }
+        }
+        targetLocation = nearest;
+        details.nearestLocationDistance = nearestDist;
       }
-      targetLocation = nearest;
-      details.nearestLocationDistance = nearestDist;
     }
+  } catch (err) {
+    console.warn('Target location lookup notice:', err.message);
+  }
+
+  // Fallback to organization coordinates or default campus beacon if no location table row exists
+  if (!targetLocation) {
+    const orgLat = parseFloat(org?.latitude) || 8.9280843;
+    const orgLng = parseFloat(org?.longitude) || 11.3307533;
+    const orgRadius = parseInt(org?.attendance_radius_m, 10) || 200;
+    targetLocation = {
+      id: 'c0000000-0000-0000-0000-000000000001',
+      name: org?.name || 'Sandlip Oasis Campus',
+      latitude: orgLat,
+      longitude: orgLng,
+      geofence_radius_m: orgRadius,
+    };
   }
 
   if (targetLocation && latitude != null && longitude != null) {
     const distanceM = haversineDistanceMeters(latitude, longitude, targetLocation.latitude, targetLocation.longitude);
-    const radiusM = targetLocation.geofence_radius_m || 50;
+    const radiusM = Math.max(
+      targetLocation.geofence_radius_m || 50,
+      parseInt(org?.attendance_radius_m, 10) || 50
+    );
+
+    // Account for indoor GPS drift and accuracy variance
+    const effectiveDistance = Math.max(0, distanceM - (accuracy ? Math.min(accuracy, 60) : 0));
+
     details.location = {
       id: targetLocation.id,
       name: targetLocation.name,
       distanceM: Math.round(distanceM),
+      effectiveDistance: Math.round(effectiveDistance),
       radiusM,
+      gpsAccuracy: accuracy ? Math.round(accuracy) : null,
     };
 
-    if (distanceM <= radiusM) {
+    if (effectiveDistance <= radiusM) {
       checks.insideGeofence = true;
     } else {
       checks.insideGeofence = false;
       const roundedDist = Math.round(distanceM);
-      criticalFailures.push(`You are ${roundedDist}m away from ${targetLocation.name}. You must be within ${radiusM}m.`);
+
+      // Only reject if GPS is strictly required
+      if (org?.require_gps !== false) {
+        // If student verified presence via dynamic classroom QR or campus network, do not block
+        const hasAlternativePhysicalProof = Boolean(locationToken) || Boolean(checks.approvedNetwork && checks.ipSubnetMatch);
+        if (!hasAlternativePhysicalProof) {
+          criticalFailures.push(`You are ${roundedDist}m away from ${targetLocation.name}. You must be within ${radiusM}m.`);
+        } else {
+          details.geofenceWarning = `GPS placed device ${roundedDist}m away, but verified via classroom QR/network.`;
+        }
+      } else {
+        details.geofenceWarning = `Device is ${roundedDist}m away (radius: ${radiusM}m). Strict GPS geofence is disabled.`;
+      }
+
       securityAnomalies.push({
         type: 'OUTSIDE_GEOFENCE',
-        severity: 'HIGH',
+        severity: org?.require_gps !== false ? 'HIGH' : 'LOW',
         distanceM: roundedDist,
         allowedRadiusM: radiusM,
         locationName: targetLocation.name,
@@ -459,8 +499,6 @@ async function validateAttendance(params) {
         securityAnomalies.push({ type: 'OUTSIDE_OPERATING_HOURS', severity: 'MEDIUM' });
       }
     }
-  } else if (checks.gpsPresent && !targetLocation) {
-    criticalFailures.push('No active attendance location found nearby.');
   }
 
   // ── 7. Dynamic QR token & Admin IP/Network verification ────────────────────

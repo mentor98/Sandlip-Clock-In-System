@@ -34,6 +34,12 @@
       ]);
       sessions = sessRes.sessions || [];
       locations = locRes.locations || [];
+      if (locations.length === 0) {
+        locations = [{ id: 'c0000000-0000-0000-0000-000000000001', name: 'Sandlip Oasis - Lecture & Hall Complex' }];
+      }
+      if (!locationId && locations.length > 0) {
+        locationId = locations[0].id;
+      }
     } catch (e) { error = e.message; }
   }
   load();

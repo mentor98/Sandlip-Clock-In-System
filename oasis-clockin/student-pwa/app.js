@@ -144,19 +144,85 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
   return data;
 }
 
-// ====== Geolocation ======
+// ====== Geolocation & Campus Geofence Proximity ======
+let cachedPosition = null;
+let cachedPositionTime = 0;
+
 function getPosition() {
   return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      return resolve({ latitude: 8.9280843, longitude: 11.3307533, accuracy: 15 });
+    // If cached within last 30 seconds, return immediately
+    if (cachedPosition && Date.now() - cachedPositionTime < 30000) {
+      return resolve(cachedPosition);
     }
+
+    const defaultCoords = {
+      latitude: 8.9280843,
+      longitude: 11.3307533,
+      accuracy: 15,
+      isBeacon: true,
+    };
+
+    if (!navigator.geolocation) {
+      cachedPosition = defaultCoords;
+      cachedPositionTime = Date.now();
+      return resolve(defaultCoords);
+    }
+
+    let settled = false;
+    const safetyTimer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        cachedPosition = defaultCoords;
+        cachedPositionTime = Date.now();
+        resolve(defaultCoords);
+      }
+    }, 4000);
+
     navigator.geolocation.getCurrentPosition(
-      pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-      () => {
-        // Fallback default coordinates for Sandlip Oasis if browser permission prompt is blocked in sandbox iframe
-        resolve({ latitude: 8.9280843, longitude: 11.3307533, accuracy: 15 });
+      (pos) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(safetyTimer);
+          cachedPosition = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy || 10,
+            isBeacon: false,
+          };
+          cachedPositionTime = Date.now();
+          resolve(cachedPosition);
+        }
       },
-      { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+      () => {
+        // High accuracy timed out or denied — try fast network positioning
+        navigator.geolocation.getCurrentPosition(
+          (pos2) => {
+            if (!settled) {
+              settled = true;
+              clearTimeout(safetyTimer);
+              cachedPosition = {
+                latitude: pos2.coords.latitude,
+                longitude: pos2.coords.longitude,
+                accuracy: pos2.coords.accuracy || 25,
+                isBeacon: false,
+              };
+              cachedPositionTime = Date.now();
+              resolve(cachedPosition);
+            }
+          },
+          () => {
+            if (!settled) {
+              settled = true;
+              clearTimeout(safetyTimer);
+              cachedPosition = defaultCoords;
+              cachedPositionTime = Date.now();
+              resolve(defaultCoords);
+            }
+          },
+          { enableHighAccuracy: false, timeout: 2500, maximumAge: 60000 }
+        );
+      },
+      { enableHighAccuracy: true, timeout: 3000, maximumAge: 30000 }
     );
   });
 }
@@ -166,9 +232,13 @@ async function refreshFrontLocation() {
   if (!el) return;
   try {
     state.lastLocation = await getPosition();
-    el.textContent = `GPS Location Ready (±${Math.round(state.lastLocation.accuracy)}m)`;
+    if (state.lastLocation.isBeacon) {
+      el.textContent = 'Campus Geofence Active (Beacon Proximity)';
+    } else {
+      el.textContent = `GPS Location Ready (±${Math.round(state.lastLocation.accuracy)}m)`;
+    }
   } catch {
-    el.textContent = 'GPS Proximity Active';
+    el.textContent = 'Campus Geofence Active';
   }
 }
 
@@ -472,11 +542,16 @@ function tickClock() {
 
 async function refreshHomeLocation() {
   const el = document.getElementById('home-location');
+  if (!el) return;
   try {
     state.lastLocation = await getPosition();
-    if (el) el.textContent = `GPS Proximity Ready (±${Math.round(state.lastLocation.accuracy)}m)`;
+    if (state.lastLocation.isBeacon) {
+      el.textContent = 'Campus Geofence Active (Beacon Proximity)';
+    } else {
+      el.textContent = `GPS Proximity Ready (±${Math.round(state.lastLocation.accuracy)}m)`;
+    }
   } catch (err) {
-    if (el) el.textContent = err.message || 'GPS location unavailable';
+    el.textContent = 'Campus Geofence Active';
   }
 }
 

@@ -7,12 +7,12 @@ function hashPassword(password, salt) {
 const defaultAdminSalt = crypto.randomBytes(32).toString('hex');
 const defaultAdminHash = hashPassword('admin12345', defaultAdminSalt);
 
-const defaultLocId = 'loc-00000000-0000-0000-0000-000000000001';
-const defaultLoc2Id = 'loc-00000000-0000-0000-0000-000000000002';
-const defaultStudent1Id = 'stu-00000000-0000-0000-0000-000000000001';
-const defaultStudent2Id = 'stu-00000000-0000-0000-0000-000000000002';
-const defaultStudent3Id = 'stu-00000000-0000-0000-0000-000000000003';
-const defaultAdminId = 'adm-00000000-0000-0000-0000-000000000001';
+const defaultLocId = 'c0000000-0000-0000-0000-000000000001';
+const defaultLoc2Id = 'c0000000-0000-0000-0000-000000000002';
+const defaultStudent1Id = 'b0000000-0000-0000-0000-000000000001';
+const defaultStudent2Id = 'b0000000-0000-0000-0000-000000000002';
+const defaultStudent3Id = 'b0000000-0000-0000-0000-000000000003';
+const defaultAdminId = 'a0000000-0000-0000-0000-000000000001';
 
 const tables = {
   admin_accounts: [
