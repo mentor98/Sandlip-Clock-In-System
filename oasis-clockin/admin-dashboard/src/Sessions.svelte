@@ -112,6 +112,10 @@
     qrSession = s;
     await generateLiveQr(s);
     await loadLiveScans(s);
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = setInterval(() => {
+      if (qrSession) loadLiveScans(qrSession);
+    }, 2000);
   }
 
   async function generateLiveQr(s) {
@@ -149,6 +153,7 @@
 
   function closeLiveQr() {
     clearInterval(qrTimer);
+    clearInterval(autoRefreshTimer);
     qrSession = null;
     qrSrc = '';
     qrExpiry = 0;
@@ -259,7 +264,13 @@
 
           <div class="scans-col">
             <div class="scans-header">
-              <h4>Live Student Attendance ({liveScans.length})</h4>
+              <div class="scans-title-wrap">
+                <h4>Live Student Attendance ({liveScans.length})</h4>
+                <button class="btn-refresh-micro" on:click={() => loadLiveScans(qrSession)} title="Refresh live attendee list">
+                  <Icon name="refresh" size={11} />
+                  <span>Refresh</span>
+                </button>
+              </div>
               <span class="tag-verified">Real-Time Sync</span>
             </div>
 
@@ -273,10 +284,15 @@
                 {#each liveScans as scan}
                   <div class="scan-item">
                     <div class="scan-left">
-                      <span class="scan-name">{scan.students?.full_name || 'Student'}</span>
+                      <div class="scan-title-line">
+                        <span class="scan-name">{scan.students?.full_name || 'Student'}</span>
+                        <span class="badge-punctuality {scan.is_late ? 'late' : 'present'}">
+                          {scan.is_late ? 'LATE' : (scan.punctuality || 'PRESENT')}
+                        </span>
+                      </div>
                       <span class="scan-id">ID: <code>{scan.students?.student_id || '—'}</code></span>
                       <span class="scan-tech">
-                        IP: {scan.ip_address || '—'} &nbsp;|&nbsp; Status: <strong class="text-green">{scan.verification_status || 'VERIFIED'}</strong>
+                        IP: <code>{scan.ip_address || '—'}</code> &nbsp;|&nbsp; MAC: <code>{scan.device_mac || scan.students?.registered_mac || '—'}</code> &nbsp;|&nbsp; Status: <strong class="text-green">{scan.verification_status || 'VERIFIED'}</strong>
                       </span>
                     </div>
                     <div class="scan-right">
@@ -284,7 +300,7 @@
                         <Icon name="check" size={12} />
                         <span>MATCHED</span>
                       </span>
-                      <span class="scan-time">{new Date(scan.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                      <span class="scan-time">{new Date(scan.recorded_at || scan.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                     </div>
                   </div>
                 {/each}
@@ -586,7 +602,18 @@
   .scans-header {
     display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px;
   }
+  .scans-title-wrap {
+    display: flex; align-items: center; gap: 8px;
+  }
   .scans-header h4 { margin: 0; font-size: 14px; font-weight: 700; color: #0f172a; }
+  .btn-refresh-micro {
+    border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 6px; padding: 2px 7px;
+    font-size: 11px; font-weight: 600; color: #475569; display: inline-flex; align-items: center; gap: 4px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .btn-refresh-micro:hover {
+    background: #0f766e; color: #ffffff; border-color: #0f766e;
+  }
   .tag-verified {
     font-size: 11px; font-weight: 700; color: #059669; background: #ecfdf5; padding: 2px 8px; border-radius: 999px;
   }
@@ -600,7 +627,17 @@
     background: #f8fafc; display: flex; justify-content: space-between; align-items: center;
   }
   .scan-left { display: flex; flex-direction: column; gap: 2px; }
+  .scan-title-line { display: flex; align-items: center; gap: 8px; }
   .scan-name { font-size: 13px; font-weight: 700; color: #0f172a; }
+  .badge-punctuality {
+    font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.02em;
+  }
+  .badge-punctuality.present {
+    background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;
+  }
+  .badge-punctuality.late {
+    background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;
+  }
   .scan-id { font-size: 11.5px; color: #64748b; }
   .scan-tech { font-size: 11px; color: #64748b; }
   .text-green { color: #16a34a; font-weight: 700; }

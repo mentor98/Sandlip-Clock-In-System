@@ -80,6 +80,7 @@ function makeHandler(attendanceType) {
         student_id: studentId,
         location_id: result.targetLocation?.id || null,
         type: attendanceType,
+        recorded_at: new Date().toISOString(),
         latitude,
         longitude,
         device_id,

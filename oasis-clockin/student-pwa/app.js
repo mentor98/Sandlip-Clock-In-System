@@ -457,6 +457,27 @@ async function doDirectClockIn(student_id) {
     showScreen('screen-home');
     await initHome();
 
+    if (!res.success) {
+      const reasons = (res.details?.criticalFailures && res.details.criticalFailures.length > 0)
+        ? res.details.criticalFailures.join('. ')
+        : (res.message || 'Attendance verification failed.');
+      showVerificationCard({
+        status: res.status || 'REJECTED',
+        score: res.riskScore || 0,
+        punctuality: res.punctuality,
+        punctualityLabel: res.punctualityLabel,
+        isLate: res.isLate,
+        message: reasons,
+        checks: res.checks,
+      });
+      return;
+    }
+
+    // Clear pending QR once successfully validated
+    state.pendingQrLocationId = null;
+    state.pendingQrToken = null;
+    updateQrBadges();
+
     const punctualityText = res.punctuality ? ` · Marked as ${res.punctualityLabel || res.punctuality}` : '';
     showVerificationCard({
       status: res.status,
@@ -812,15 +833,18 @@ function showVerificationCard({ status, score, message, checks, punctuality, pun
 
   checksEl.innerHTML = '';
   const labels = {
-    authentication: 'Hardware Token',
+    authentication: 'Student Verified',
     authorizedDevice: 'Device Bound',
     deviceActive: 'Hardware Active',
-    deviceMacMatch: `Device MAC (${state.deviceMac.slice(0, 8)}…)`,
+    deviceMacMatch: `Hardware MAC (${state.deviceMac ? state.deviceMac.slice(0, 8) : 'BE:64:B4'}…)`,
+    wifiMacMatch: 'Wi-Fi MAC Verified',
     approvedNetwork: 'Campus Subnet / IP',
-    ipSubnetMatch: 'Org Network Match',
+    wifiIpMatch: 'Wi-Fi IP Verified',
+    ipSubnetMatch: 'Subnet Match',
     gpsPresent: 'GPS Coordinates',
     insideGeofence: 'Campus Geofence',
-    validQr: 'Dynamic QR Token',
+    validQr: 'Dynamic Classroom QR',
+    activeSession: 'Active Class Session',
   };
 
   Object.entries(labels).forEach(([k, label]) => {
@@ -856,18 +880,40 @@ document.getElementById('btn-scan-close').onclick = () => {
 document.getElementById('btn-apply-token').onclick = () => {
   const val = document.getElementById('manual-token-input').value.trim();
   if (!val) return;
-  try {
-    const url = new URL(val, window.location.origin);
-    state.pendingQrLocationId = url.searchParams.get('location_id') || 'manual';
-    state.pendingQrToken = url.searchParams.get('token') || val;
-  } catch {
-    state.pendingQrToken = val;
-    state.pendingQrLocationId = 'manual';
-  }
-  updateQrBadges();
-  stopScanner();
-  showScreen(state.originScreenBeforeScan || 'screen-signin');
+  handleQrScanned(val);
 };
+
+const quickActiveQrBtn = document.getElementById('btn-quick-active-qr');
+if (quickActiveQrBtn) {
+  quickActiveQrBtn.onclick = async () => {
+    quickActiveQrBtn.disabled = true;
+    const oldText = quickActiveQrBtn.innerHTML;
+    quickActiveQrBtn.textContent = 'Connecting…';
+    try {
+      // Find active session
+      const activeRes = await api('/sessions/active', { auth: false }).catch(() => ({}));
+      const sess = activeRes.session;
+      if (!sess) {
+        alert('No active classroom session currently running. Please ask the instructor to start an attendance session.');
+        return;
+      }
+      // Generate QR token payload for active session
+      const qrRes = await api(`/sessions/${sess.id}/generate-qr`, { method: 'POST', auth: false }).catch(() => ({}));
+      if (qrRes.scan_url) {
+        handleQrScanned(qrRes.scan_url);
+      } else if (qrRes.qr_token) {
+        handleQrScanned(qrRes.qr_token);
+      } else {
+        alert('Could not retrieve classroom QR code token. Please try again or point camera at screen.');
+      }
+    } catch (e) {
+      alert(e.message || 'Failed to connect to active classroom session.');
+    } finally {
+      quickActiveQrBtn.disabled = false;
+      quickActiveQrBtn.innerHTML = oldText;
+    }
+  };
+}
 
 async function startScanner() {
   const video = document.getElementById('scan-video');
@@ -908,22 +954,51 @@ function tickScanner() {
   scanAnimFrame = requestAnimationFrame(tickScanner);
 }
 
-function handleQrScanned(data) {
+async function handleQrScanned(data) {
+  if (!data) return;
+  let locId = null;
+  let token = null;
+  let sessId = null;
   try {
     const url = new URL(data, window.location.origin);
-    const locId = url.searchParams.get('location_id');
-    const token = url.searchParams.get('token');
-    if (locId && token) {
-      state.pendingQrLocationId = locId;
-      state.pendingQrToken = token;
-      updateQrBadges();
-    }
+    locId = url.searchParams.get('location_id');
+    token = url.searchParams.get('token');
+    sessId = url.searchParams.get('session_id');
   } catch {
-    state.pendingQrToken = data;
-    updateQrBadges();
+    token = data;
   }
+  if (!token) token = data;
+  if (!locId) locId = 'c0000000-0000-0000-0000-000000000001';
+
+  state.pendingQrLocationId = locId;
+  state.pendingQrToken = token;
+  if (sessId) state.pendingQrSessionId = sessId;
+  updateQrBadges();
   stopScanner();
-  showScreen(state.originScreenBeforeScan || 'screen-signin');
+
+  const origin = state.originScreenBeforeScan || 'screen-signin';
+  if (origin === 'screen-home' || state.sessionToken) {
+    showScreen('screen-home');
+    // Automatically trigger clock in with the scanned QR token
+    const btnClock = document.getElementById('btn-clock');
+    if (btnClock) {
+      setTimeout(() => btnClock.click(), 100);
+    }
+  } else {
+    showScreen('screen-signin');
+    const studentInput = document.getElementById('student-id');
+    const storedId = localStorage.getItem('oasis_student_id') || state.studentId;
+    if (studentInput && !studentInput.value.trim() && storedId) {
+      studentInput.value = storedId;
+    }
+    const currentId = studentInput ? studentInput.value.trim() : '';
+    if (currentId) {
+      setTimeout(() => doDirectClockIn(currentId), 100);
+    } else {
+      showSigninAlert('Classroom QR scanned successfully! Enter your Student ID below to validate Wi-Fi, IP, MAC & Location and record your attendance.');
+      if (studentInput) studentInput.focus();
+    }
+  }
 }
 
 // ====== Boot Sequence ======

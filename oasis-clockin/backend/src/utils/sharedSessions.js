@@ -164,6 +164,8 @@ async function generateSessionQrPayload(session, adminIp, adminId) {
   });
 
   return {
+    qr_token: token,
+    scan_url: deepLink,
     qr_png_base64: png.toString('base64'),
     session_id: sessionId,
     session_title: session.title,

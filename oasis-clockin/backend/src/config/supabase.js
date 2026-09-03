@@ -416,6 +416,28 @@ class MockQueryBuilder {
     return this;
   }
 
+  maybeSingle() {
+    this.isSingle = true;
+    return this;
+  }
+
+  gt(col, val) {
+    this.filters.push((row) => row[col] != null && row[col] > val);
+    return this;
+  }
+
+  lt(col, val) {
+    this.filters.push((row) => row[col] != null && row[col] < val);
+    return this;
+  }
+
+  match(obj) {
+    for (const [key, val] of Object.entries(obj)) {
+      this.eq(key, val);
+    }
+    return this;
+  }
+
   _execSync() {
     const tbl = getTable(this.tableName);
 
@@ -447,6 +469,7 @@ class MockQueryBuilder {
           const newItem = {
             id: item.id || `${this.tableName.slice(0, 3)}-${crypto.randomUUID()}`,
             created_at: item.created_at || new Date().toISOString(),
+            ...(this.tableName === 'attendance' && !item.recorded_at ? { recorded_at: new Date().toISOString() } : {}),
             ...item,
           };
           tbl.push(newItem);

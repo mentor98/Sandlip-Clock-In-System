@@ -276,10 +276,16 @@
       <!-- Manual deep-link / token fallback -->
       <div class="manual-token-wrap">
         <input id="manual-token-input" placeholder="Or paste QR link / token here" />
-        <button id="btn-apply-token" class="btn-primary" style="margin-top:8px">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          <span>Apply Code</span>
-        </button>
+        <div style="display: flex; gap: 8px; margin-top: 8px;">
+          <button id="btn-apply-token" class="btn-primary" style="flex: 1;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            <span>Apply Code</span>
+          </button>
+          <button id="btn-quick-active-qr" class="btn-secondary" style="flex: 1; font-size: 12.5px;" type="button" title="One-click scan current classroom QR">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>Classroom QR</span>
+          </button>
+        </div>
       </div>
     </section>
   </main>

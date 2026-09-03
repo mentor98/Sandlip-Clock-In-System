@@ -114,17 +114,17 @@ function calculatePunctuality({ activeSession, targetLocation, org, currentTime 
   const graceMinutes = (org && org.grace_period_minutes != null) ? org.grace_period_minutes : 15;
   const earlyThreshold = (org && org.early_threshold_minutes != null) ? org.early_threshold_minutes : 10;
 
-  let punctuality = 'TOWARDS';
-  let punctualityLabel = 'Towards (On Time)';
+  let punctuality = 'PRESENT';
+  let punctualityLabel = 'Present (On Time)';
   let isLate = false;
 
   if (diffMinutes < -earlyThreshold) {
     punctuality = 'EARLY';
-    punctualityLabel = 'Early';
+    punctualityLabel = 'Present (Early)';
     isLate = false;
   } else if (diffMinutes <= graceMinutes) {
-    punctuality = 'TOWARDS';
-    punctualityLabel = 'Towards (On Time)';
+    punctuality = 'PRESENT';
+    punctualityLabel = 'Present (On Time)';
     isLate = false;
   } else {
     punctuality = 'LATE';
@@ -371,7 +371,7 @@ async function validateAttendance(params) {
     details.networkNote = `IP ${clientIp} does not match the designated WiFi network (${requiredWifiIp}).`;
     securityAnomalies.push({ type: 'NETWORK_MISMATCH', severity: 'MEDIUM', clientIp, requiredWifiIp });
 
-    if (org?.ip_check_mode === 'strict' || org?.require_ip_match) {
+    if (org?.ip_check_mode === 'strict') {
       criticalFailures.push(`You must be connected via the designated campus WiFi (IPv4: ${requiredWifiIp}, MAC: ${requiredWifiMac}).`);
     }
   }
@@ -604,20 +604,28 @@ async function validateAttendance(params) {
   }
 
   // ── 8. Duplicate attendance check ───────────────────────────────────────────
-  if (targetLocation && checks.authentication) {
+  if (checks.authentication) {
     const today = new Date().toISOString().slice(0, 10);
-    const { data: existing } = await supabaseAdmin
+    const targetSessionId = details.sessionId || activeSession?.id || null;
+
+    let dupQuery = supabaseAdmin
       .from('attendance')
-      .select('id, recorded_at')
+      .select('id, recorded_at, session_id')
       .eq('student_id', studentId)
-      .eq('location_id', targetLocation.id)
-      .eq('type', attendanceType)
-      .gte('recorded_at', today)
-      .limit(1);
+      .eq('type', attendanceType);
+
+    if (targetSessionId) {
+      dupQuery = dupQuery.eq('session_id', targetSessionId);
+    } else if (targetLocation) {
+      dupQuery = dupQuery.eq('location_id', targetLocation.id).gte('recorded_at', today);
+    }
+
+    const { data: existing } = await dupQuery.limit(1);
 
     if (existing && existing.length > 0) {
       checks.duplicate = true;
-      criticalFailures.push(`You have already recorded your ${attendanceType === 'clock_in' ? 'clock in' : 'clock out'} today at ${targetLocation.name}.`);
+      const targetLabel = activeSession?.title || targetLocation?.name || 'this session';
+      criticalFailures.push(`You have already recorded your ${attendanceType === 'clock_in' ? 'clock in' : 'clock out'} for ${targetLabel}.`);
       securityAnomalies.push({ type: 'DUPLICATE_ATTENDANCE_ATTEMPT', severity: 'LOW' });
     }
   }

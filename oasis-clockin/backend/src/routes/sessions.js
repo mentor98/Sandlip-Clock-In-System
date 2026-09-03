@@ -255,35 +255,44 @@ router.delete('/:id', async (req, res) => {
 // GET /api/sessions/:id/attendance — who clocked in during this session
 router.get('/:id/attendance', async (req, res) => {
   try {
+    const sessionId = req.params.id;
     const { data: session } = await supabaseAdmin
       .from('attendance_sessions')
-      .select('started_at, closed_at, location_id')
-      .eq('id', req.params.id)
+      .select('id, started_at, closed_at, location_id')
+      .eq('id', sessionId)
       .single();
 
-    const inMemSession = inMemorySessions.find((s) => s.id === req.params.id);
+    const inMemSession = inMemorySessions.find((s) => s.id === sessionId);
     const activeSess = session || inMemSession;
 
-    if (!activeSess) {
-      return res.json({ attendance: [] });
-    }
-
-    let query = supabaseAdmin
+    const { data: allAttendance, error } = await supabaseAdmin
       .from('attendance')
-      .select('*, students(full_name, student_id)')
-      .gte('recorded_at', activeSess.started_at)
-      .order('recorded_at', { ascending: true });
+      .select('*, students(full_name, student_id, email, registered_mac, registered_ip)')
+      .order('recorded_at', { ascending: false });
 
-    if (activeSess.location_id) {
-      query = query.eq('location_id', activeSess.location_id);
-    }
-    if (activeSess.closed_at) {
-      query = query.lte('recorded_at', activeSess.closed_at);
-    }
+    if (!error && allAttendance) {
+      const filtered = allAttendance.filter((r) => {
+        // Direct session ID match
+        if (r.session_id === sessionId) return true;
 
-    const { data, error } = await query;
-    if (!error) {
-      return res.json({ attendance: data || [] });
+        // Active session time window match
+        if (activeSess && activeSess.started_at) {
+          const recIso = r.recorded_at || r.created_at;
+          if (recIso) {
+            const recTime = new Date(recIso).getTime();
+            const startTime = new Date(activeSess.started_at).getTime();
+            const closeTime = activeSess.closed_at ? new Date(activeSess.closed_at).getTime() : Date.now() + 60000;
+            if (recTime >= startTime - 60000 && recTime <= closeTime) {
+              if (!activeSess.location_id || r.location_id === activeSess.location_id) {
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      });
+
+      return res.json({ attendance: filtered });
     }
   } catch (err) {
     console.warn('Session attendance load notice:', err.message);

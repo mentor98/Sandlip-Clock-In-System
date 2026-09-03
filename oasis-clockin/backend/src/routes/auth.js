@@ -404,6 +404,7 @@ router.post('/clockin-direct', async (req, res) => {
         student_id: student.id,
         location_id: result.targetLocation?.id || null,
         type: attendance_type,
+        recorded_at: new Date().toISOString(),
         latitude: latitude != null ? latitude : 8.9280843,
         longitude: longitude != null ? longitude : 11.3307533,
         device_id: deviceId,
