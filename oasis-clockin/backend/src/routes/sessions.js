@@ -45,10 +45,13 @@ router.get('/:id/stream', (req, res) => {
   const onAttendance = (eventData) => {
     try {
       if (!eventData) return;
-      const evSessionId = String(eventData.sessionId || '');
+      const rec = eventData.record || eventData;
+      const evSessionId = String(eventData.sessionId || rec.session_id || '');
       const reqSessionId = String(sessionId || '');
       if (!evSessionId || !reqSessionId || evSessionId === reqSessionId) {
-        res.write(`event: attendance\ndata: ${JSON.stringify(eventData.record || eventData)}\n\n`);
+        const payloadStr = JSON.stringify(rec);
+        res.write(`event: attendance\ndata: ${payloadStr}\n\n`);
+        res.write(`data: ${payloadStr}\n\n`);
       }
     } catch (e) {
       console.warn('SSE send notice:', e.message);

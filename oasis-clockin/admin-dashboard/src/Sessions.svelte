@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { api } from './lib/api.js';
+  import { api, getAdminSession } from './lib/api.js';
   import { subscribeTable } from './lib/realtime.js';
   import Icon from './lib/Icon.svelte';
 
@@ -45,7 +45,15 @@
   }
   load();
 
-  const unsub = subscribeTable('attendance', '*', () => {
+  const unsub = subscribeTable('attendance', '*', (payload) => {
+    if (qrSession && payload?.record) {
+      const rec = payload.record;
+      if (!rec.session_id || String(rec.session_id) === String(qrSession.id)) {
+        if (!liveScans.some(existing => existing.id === rec.id)) {
+          liveScans = [rec, ...liveScans];
+        }
+      }
+    }
     if (viewingSession) viewAttendance(viewingSession);
     if (qrSession) loadLiveScans(qrSession);
   });
@@ -132,21 +140,32 @@
         const adminTok = getAdminSession();
         const sseUrl = `/api/sessions/${s.id}/stream` + (adminTok ? `?auth=${encodeURIComponent(adminTok)}` : '');
         liveSse = new EventSource(sseUrl);
+        const handleIncomingScan = (item) => {
+          if (!item || !qrSession) return;
+          if (item.session_id && String(item.session_id) !== String(qrSession.id)) return;
+          const exists = liveScans.some(existing => existing.id === item.id);
+          if (!exists) {
+            liveScans = [item, ...liveScans];
+          } else {
+            liveScans = liveScans.map(existing => existing.id === item.id ? item : existing);
+          }
+        };
+
         liveSse.addEventListener('attendance', (e) => {
           try {
             const item = JSON.parse(e.data);
-            if (item && qrSession) {
-              // Prepend new attendance item immediately if not in list yet
-              if (!liveScans.some(existing => existing.id === item.id)) {
-                liveScans = [item, ...liveScans];
-              } else {
-                loadLiveScans(qrSession);
-              }
-            }
+            handleIncomingScan(item);
           } catch (_parseErr) {
             if (qrSession) loadLiveScans(qrSession);
           }
         });
+
+        liveSse.onmessage = (e) => {
+          try {
+            const item = JSON.parse(e.data);
+            handleIncomingScan(item);
+          } catch (_) {}
+        };
         liveSse.onerror = () => {
           // Keep running polling fallback seamlessly
         };

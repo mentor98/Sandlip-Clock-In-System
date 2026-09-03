@@ -18,6 +18,10 @@ export async function api(path, { method = 'GET', body, auth = true, token: cust
   return data;
 }
 
+export function getAdminSession() {
+  return localStorage.getItem('oasis_admin_session') || '';
+}
+
 export function setAdminSession(sessionToken) {
   localStorage.setItem('oasis_admin_session', sessionToken);
 }

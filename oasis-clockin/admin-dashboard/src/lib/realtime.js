@@ -18,7 +18,7 @@ export function subscribeTable(table, event = '*', callback) {
 
   // 1. Direct Server-Sent Events stream from backend for instant zero-latency updates
   try {
-    const token = localStorage.getItem('oasis_admin_token') || '';
+    const token = localStorage.getItem('oasis_admin_session') || localStorage.getItem('oasis_admin_token') || '';
     if (token && typeof window !== 'undefined' && window.EventSource) {
       eventSource = new EventSource(`/api/admin/stream?token=${encodeURIComponent(token)}`);
       

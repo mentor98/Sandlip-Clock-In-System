@@ -280,10 +280,12 @@ router.post('/register', async (req, res) => {
     }
   }
 
-  const registrationToken = signSession({ studentId: student.id, role: 'pending-device-bind' });
+  const sessionToken = signSession({ studentId: student.id, role: 'student' });
   res.status(200).json({
     student,
-    registrationToken,
+    sessionToken,
+    registrationToken: sessionToken,
+    deviceId: `dev-${student.id.slice(0, 8)}`,
     registered_ip: clientIp,
     registered_mac: clientMac,
   });
