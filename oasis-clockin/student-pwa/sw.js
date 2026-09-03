@@ -3,7 +3,7 @@
 // stores it in IndexedDB via the Background Sync API and replays it once
 // connectivity returns.
 
-const CACHE_NAME = 'oasis-clockin-v1';
+const CACHE_NAME = 'oasis-clockin-v3';
 const SHELL = ['/', 'index.html', 'style.css', 'app.js', 'manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -59,6 +59,22 @@ self.addEventListener('fetch', (event) => {
           { status: 200, headers: { 'Content-Type': 'application/json' } }
         );
       })
+    );
+    return;
+  }
+
+  // Network-first strategy for app shell and scripts so updates apply immediately
+  if (request.mode === 'navigate' || request.url.endsWith('.js') || request.url.endsWith('.html') || request.url.endsWith('.css')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
     );
     return;
   }

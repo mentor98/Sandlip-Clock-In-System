@@ -5,7 +5,21 @@ function getApiBase() {
   }
   const stored = localStorage.getItem('oasis_api_base');
   if (stored && stored.trim()) {
-    return stored.trim().replace(/\/+$/, '');
+    const val = stored.trim().replace(/\/+$/, '');
+    // Sanitize: check for invalid, dummy, placeholder, or unresolvable domains
+    if (
+      val.includes('your-server') ||
+      val.includes('example.com') ||
+      val.includes('localhost:4000') ||
+      val.includes('oasis-clockin-backend') ||
+      val.includes('dummy') ||
+      val.includes('undefined') ||
+      val.includes('null')
+    ) {
+      try { localStorage.removeItem('oasis_api_base'); } catch (_) {}
+      return '/api';
+    }
+    return val;
   }
   return '/api';
 }
@@ -311,7 +325,7 @@ function performLocalVerifiedAttendance(payload) {
 }
 
 // ====== API ======
-async function api(path, { method = 'GET', body, auth = true, timeoutMs = 4000 } = {}) {
+async function api(path, { method = 'GET', body, auth = true, timeoutMs = 4000, isRetry = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && state.sessionToken) headers.Authorization = `Bearer ${state.sessionToken}`;
 
@@ -332,7 +346,19 @@ async function api(path, { method = 'GET', body, auth = true, timeoutMs = 4000 }
   } catch (netErr) {
     clearTimeout(timer);
     console.warn(`API network request notice (${fullUrl}):`, netErr.name, netErr.message);
-    const err = new Error(netErr.name === 'AbortError' ? 'Connection timed out (3.5s). Switched to offline verification.' : (netErr.message || 'Network unavailable'));
+
+    // If stored custom endpoint failed with DNS/network/fetch error, auto-heal and retry immediately via '/api'
+    if (!isRetry && base !== '/api' && !path.startsWith('http')) {
+      console.warn(`Custom API endpoint (${base}) failed (${netErr.message}). Clearing invalid setting and retrying with /api...`);
+      try { localStorage.removeItem('oasis_api_base'); } catch (_) {}
+      try {
+        return await api(path, { method, body, auth, timeoutMs, isRetry: true });
+      } catch (retryErr) {
+        throw retryErr;
+      }
+    }
+
+    const err = new Error(netErr.name === 'AbortError' ? 'Connection timed out. Switched to offline verification.' : (netErr.message || 'Network unavailable'));
     err.isNetworkError = true;
     err.originalError = netErr;
     throw err;
@@ -341,7 +367,13 @@ async function api(path, { method = 'GET', body, auth = true, timeoutMs = 4000 }
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(data.error || 'Request failed.');
+    // If a custom endpoint returned 502/503/504, try local /api
+    if (!isRetry && base !== '/api' && !path.startsWith('http') && (res.status === 502 || res.status === 503 || res.status === 504)) {
+      console.warn(`Custom endpoint returned ${res.status}. Falling back to /api...`);
+      try { localStorage.removeItem('oasis_api_base'); } catch (_) {}
+      return await api(path, { method, body, auth, timeoutMs, isRetry: true });
+    }
+    const err = new Error(data.error || data.message || 'Request failed.');
     err.status = res.status;
     err.data = data;
     throw err;
@@ -595,12 +627,14 @@ async function doDirectClockIn(student_id) {
     try {
       res = await api('/auth/clockin-direct', { method: 'POST', body: payload, auth: false, timeoutMs: 3500 });
     } catch (apiErr) {
-      if (apiErr.isNetworkError || !apiErr.status) {
-        console.warn('Network offline or DNS error, switching to local verified clock-in:', apiErr.message);
-        res = performLocalVerifiedAttendance(payload);
-      } else {
-        throw apiErr;
+      if (apiErr.status === 404 || (apiErr.data && apiErr.data.notFound)) {
+        throw apiErr; // Legitimate unknown student ID
       }
+      if (apiErr.status === 409 || (apiErr.data && apiErr.data.alreadyScanned)) {
+        throw apiErr; // Legitimate duplicate scan
+      }
+      console.warn('Backend connection unavailable, switching to local verified clock-in:', apiErr.message);
+      res = performLocalVerifiedAttendance(payload);
     }
 
     // Save session
@@ -616,7 +650,11 @@ async function doDirectClockIn(student_id) {
 
     // Show Home & verification card
     showScreen('screen-home');
-    await initHome();
+    try {
+      await initHome();
+    } catch (homeErr) {
+      console.warn('Home screen background data loading notice:', homeErr);
+    }
 
     if (!res.success) {
       const reasons = (res.details?.criticalFailures && res.details.criticalFailures.length > 0)
@@ -1298,6 +1336,29 @@ async function handleQrScanned(data) {
     bannerEl.textContent = 'Comparing connected network, hardware MAC, and classroom geofence…';
   }
 
+  // Safety timer: Never let the HUD hang or trap the user indefinitely
+  let safetyTimer = setTimeout(() => {
+    if (isScanningValidationActive) {
+      console.warn('Scan validation safety timeout. Returning to scanner.');
+      isScanningValidationActive = false;
+      if (hud) hud.style.display = 'none';
+      if (targetBox) targetBox.classList.remove('captured');
+      startScanner();
+    }
+  }, 6000);
+
+  // Allow student to cancel and re-scan at any instant
+  const btnHudDismiss = document.getElementById('btn-hud-dismiss');
+  if (btnHudDismiss) {
+    btnHudDismiss.onclick = () => {
+      clearTimeout(safetyTimer);
+      isScanningValidationActive = false;
+      if (hud) hud.style.display = 'none';
+      if (targetBox) targetBox.classList.remove('captured');
+      startScanner();
+    };
+  }
+
   // Step 1: Dynamic QR Code Captured
   if (badgeQr) { badgeQr.className = 'hud-badge ok'; badgeQr.textContent = 'CAPTURED'; }
   if (iconQr) iconQr.className = 'hud-step-icon ok';
@@ -1371,12 +1432,11 @@ async function handleQrScanned(data) {
     try {
       res = await api('/auth/clockin-direct', { method: 'POST', body: payload, auth: false, timeoutMs: 3500 });
     } catch (fetchErr) {
-      if (fetchErr.isNetworkError || !fetchErr.status) {
-        console.warn('Backend unavailable, validating locally and queuing attendance:', fetchErr.message);
-        res = performLocalVerifiedAttendance(payload);
-      } else {
-        throw fetchErr;
+      if (fetchErr.status === 409 || (fetchErr.data && fetchErr.data.alreadyScanned)) {
+        throw fetchErr; // Legitimate single-scan duplicate error
       }
+      console.warn('Backend unavailable during QR scan, validating locally and queuing attendance:', fetchErr.message);
+      res = performLocalVerifiedAttendance(payload);
     }
 
     if (res.success || res.status === 'VERIFIED') {
@@ -1425,10 +1485,15 @@ async function handleQrScanned(data) {
       updateQrBadges();
 
       // Smoothly navigate to Home Screen with Verification Card after brief confirmation
+      clearTimeout(safetyTimer);
       setTimeout(async () => {
         isScanningValidationActive = false;
         showScreen('screen-home');
-        await initHome();
+        try {
+          await initHome();
+        } catch (hErr) {
+          console.warn('initHome background notice:', hErr);
+        }
         showVerificationCard({
           status: res.status,
           score: res.riskScore,
@@ -1442,6 +1507,7 @@ async function handleQrScanned(data) {
       return;
     } else {
       // Server returned approval failure
+      clearTimeout(safetyTimer);
       playScanChirp(false);
       const reasons = (res.details?.criticalFailures && res.details.criticalFailures.length > 0)
         ? res.details.criticalFailures.join('. ')
@@ -1538,10 +1604,111 @@ async function handleQrScanned(data) {
       }
     }
 
+    clearTimeout(safetyTimer);
     setTimeout(() => {
       isScanningValidationActive = false;
       startScanner();
     }, isDuplicate ? 4000 : 3000);
+  }
+}
+
+// ====== QR Image File & Drag-and-Drop Decoder ======
+function setupQrImageUpload() {
+  const fileInput = document.getElementById('qr-file-input');
+  const uploadBtn = document.getElementById('btn-upload-qr-img');
+  const statusEl = document.getElementById('qr-file-status');
+  if (!fileInput || !uploadBtn) return;
+
+  uploadBtn.onclick = () => fileInput.click();
+
+  fileInput.onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    await processQrImageFile(file, statusEl);
+    fileInput.value = '';
+  };
+
+  const dropZone = document.getElementById('screen-scan');
+  if (dropZone) {
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+    });
+    dropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+        await processQrImageFile(e.dataTransfer.files[0], statusEl);
+      }
+    });
+  }
+}
+
+async function processQrImageFile(file, statusEl) {
+  if (statusEl) {
+    statusEl.style.display = 'block';
+    statusEl.textContent = 'Analyzing image for QR code…';
+    statusEl.style.color = 'rgba(255,255,255,0.9)';
+  }
+
+  try {
+    const imgBitmap = await createImageBitmap(file);
+    const canvas = document.createElement('canvas');
+    canvas.width = imgBitmap.width;
+    canvas.height = imgBitmap.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(imgBitmap, 0, 0);
+
+    let decodedText = null;
+
+    // 1. Try native BarcodeDetector
+    if (barcodeDetector) {
+      try {
+        const barcodes = await barcodeDetector.detect(canvas);
+        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+          decodedText = barcodes[0].rawValue;
+        }
+      } catch (_) {}
+    }
+
+    // 2. Try jsQR software decoding
+    if (!decodedText && window.jsQR) {
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = window.jsQR(imgData.data, canvas.width, canvas.height, {
+        inversionAttempts: 'dontInvert',
+      }) || window.jsQR(imgData.data, canvas.width, canvas.height, {
+        inversionAttempts: 'onlyInvert',
+      });
+      if (code && code.data) {
+        decodedText = code.data;
+      }
+    }
+
+    if (decodedText) {
+      if (statusEl) {
+        statusEl.textContent = '✅ QR Code found! Validating attendance…';
+        statusEl.style.color = '#34d399';
+      }
+      await handleQrScanned(decodedText);
+    } else {
+      if (statusEl) {
+        statusEl.textContent = '⚠️ No QR code detected. Please ensure the QR code is clearly visible and uncropped.';
+        statusEl.style.color = '#f87171';
+        setTimeout(() => {
+          if (statusEl) statusEl.style.display = 'none';
+        }, 5000);
+      }
+    }
+  } catch (err) {
+    console.error('QR image reading error:', err);
+    if (statusEl) {
+      statusEl.textContent = 'Could not read image. Please try another image or point your camera.';
+      statusEl.style.color = '#f87171';
+    }
   }
 }
 
@@ -1695,6 +1862,27 @@ if (btnResetServer) {
 
 // ====== Boot Sequence ======
 (async function boot() {
+  // Ensure bad or stale API hostnames are cleared immediately
+  try {
+    const rawHost = localStorage.getItem('oasis_api_base');
+    if (rawHost && (rawHost.includes('your-server') || rawHost.includes('example.com') || rawHost.includes('oasis-clockin-backend') || rawHost.includes('localhost:4000'))) {
+      localStorage.removeItem('oasis_api_base');
+    }
+  } catch (_) {}
+
+  // Wire up QR image drag/upload
+  setupQrImageUpload();
+
+  // Register service worker with instant update
+  if ('serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js');
+      if (reg) reg.update();
+    } catch (swErr) {
+      console.warn('SW registration notice:', swErr.message);
+    }
+  }
+
   updateServerStatusPill();
   flushOfflineAttendanceQueue();
 

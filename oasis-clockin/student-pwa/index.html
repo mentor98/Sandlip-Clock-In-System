@@ -9,7 +9,7 @@
 <meta property="og:description" content="Secure student attendance tracking system with passkey / WebAuthn authentication, geofencing, QR verification, absence marking, and administrative controls." />
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#0f766e" />
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css?v=2.3" />
 </head>
 <body>
 
@@ -348,10 +348,25 @@
         <div class="hud-banner" id="hud-banner">
           Comparing network connection and device telemetry…
         </div>
+        <div class="hud-actions" id="hud-actions" style="margin-top: 10px; display: flex; gap: 8px; justify-content: center;">
+          <button id="btn-hud-dismiss" class="btn-micro" type="button" style="background: rgba(255,255,255,0.18); color: #fff; border: 1px solid rgba(255,255,255,0.35); border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer;">
+            ✕ Cancel &amp; Scan Again
+          </button>
+        </div>
       </div>
 
       <div class="scan-overlay-hint">
         <p id="scan-hint" class="hint center">Point your camera at the dynamic attendance QR code</p>
+      </div>
+
+      <!-- QR Image / File Upload Alternative -->
+      <div class="qr-upload-strip" style="margin: 10px 0; text-align: center;">
+        <input type="file" id="qr-file-input" accept="image/*" style="display: none;" />
+        <button id="btn-upload-qr-img" class="btn-secondary" type="button" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 10px 14px; font-size: 13px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span>Upload QR Code Image / Photo</span>
+        </button>
+        <p id="qr-file-status" class="field-hint" style="margin: 4px 0 0; font-size: 11px; color: rgba(255,255,255,0.7); display: none;"></p>
       </div>
 
       <!-- Manual deep-link / token fallback -->
@@ -386,9 +401,9 @@
 
         <label for="server-url-input">API Endpoint URL</label>
         <div class="input-wrap">
-          <input id="server-url-input" type="text" placeholder="/api or https://your-server.run.app/api" />
+          <input id="server-url-input" type="text" placeholder="/api" />
         </div>
-        <p class="field-hint">Default is <code>/api</code>. If your backend is hosted separately, enter the full URL (e.g. <code>https://...run.app/api</code>).</p>
+        <p class="field-hint">Default is <code>/api</code> (connected to this application server).</p>
 
         <div id="server-test-alert" class="alert-box" style="display: none; margin-top: 10px;"></div>
 
@@ -404,6 +419,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=2.3"></script>
 </body>
 </html>
