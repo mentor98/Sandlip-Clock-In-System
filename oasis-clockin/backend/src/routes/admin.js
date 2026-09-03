@@ -529,7 +529,11 @@ router.post('/students/:id/reset-device', async (req, res) => {
     event_type: 'admin_action',
     detail: { action: 'reset_device', by: req.user.sub },
   });
-  res.json({ registrationLink: `${process.env.RP_ORIGIN}/register-device?token=${registrationToken}` });
+  const forwardedProto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+  const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host;
+  const detectedOrigin = forwardedHost ? `${forwardedProto}://${forwardedHost}` : 'http://localhost:3000';
+  const baseUrl = process.env.RP_ORIGIN || process.env.RP_ORIGIN_PWA || detectedOrigin;
+  res.json({ registrationLink: `${baseUrl}/register-device?token=${registrationToken}` });
 });
 
 // --- Exports & audit ---
