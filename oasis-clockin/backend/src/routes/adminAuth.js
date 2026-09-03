@@ -71,19 +71,27 @@ router.post('/login', async (req, res) => {
   const cleanAdminId = String(admin_id).trim();
 
   // 1. Try finding by exact or case-insensitive admin_id or email
-  let { data: admin } = await supabaseAdmin
-    .from('admin_accounts')
-    .select('*')
-    .ilike('admin_id', cleanAdminId)
-    .single();
+  let admin = null;
+  try {
+    const q1 = supabaseAdmin.from('admin_accounts').select('*');
+    const { data: byId } = typeof q1.ilike === 'function'
+      ? await q1.ilike('admin_id', cleanAdminId).single()
+      : await q1.eq('admin_id', cleanAdminId).single();
+    admin = byId;
+  } catch (err) {
+    console.warn('Admin ID lookup fallback warning:', err.message);
+  }
 
   if (!admin) {
-    const { data: byEmail } = await supabaseAdmin
-      .from('admin_accounts')
-      .select('*')
-      .ilike('email', cleanAdminId)
-      .single();
-    admin = byEmail;
+    try {
+      const q2 = supabaseAdmin.from('admin_accounts').select('*');
+      const { data: byEmail } = typeof q2.ilike === 'function'
+        ? await q2.ilike('email', cleanAdminId).single()
+        : await q2.eq('email', cleanAdminId).single();
+      admin = byEmail;
+    } catch (err) {
+      console.warn('Admin email lookup fallback warning:', err.message);
+    }
   }
 
   // 2. If no admin account exists or matching ADMIN-001 with default password

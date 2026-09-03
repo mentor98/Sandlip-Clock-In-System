@@ -21,7 +21,7 @@ router.get('/active', requireAuth, async (_req, res) => {
 
 // ── Admin only below ──────────────────────────────────────────────────────────
 
-router.use(requireAdmin);
+router.use(requireAuth, requireAdmin);
 
 // GET /api/sessions — list all sessions
 router.get('/', async (_req, res) => {

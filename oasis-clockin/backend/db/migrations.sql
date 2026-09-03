@@ -11,7 +11,13 @@ alter table devices
   add column if not exists authorized_at timestamptz,
   add column if not exists ip_address text,
   add column if not exists user_agent text,
+  add column if not exists mac_address text,
   add column if not exists last_seen_at timestamptz;
+
+-- ── 1b. students — add network & device identity fields ───────────────────
+alter table students
+  add column if not exists registered_ip text,
+  add column if not exists registered_mac text;
 
 -- Backfill existing rows: treat any active (non-revoked) device as AUTHORIZED
 update devices set status = 'AUTHORIZED'
@@ -30,6 +36,8 @@ alter table attendance
   add column if not exists session_id uuid,
   add column if not exists risk_score integer,
   add column if not exists verification_status text,
+  add column if not exists punctuality text default 'ON_TIME',
+  add column if not exists device_mac text,
   add column if not exists ip_address text,
   add column if not exists gps_accuracy double precision,
   add column if not exists is_late boolean default false,

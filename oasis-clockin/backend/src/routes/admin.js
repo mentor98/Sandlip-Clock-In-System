@@ -183,15 +183,42 @@ router.get('/locations/:id/qr', async (req, res) => {
 
 router.get('/devices', async (req, res) => {
   const { student_id, status } = req.query;
-  let query = supabaseAdmin
-    .from('devices')
-    .select('*, students(full_name, student_id, email, registered_ip, registered_mac)')
-    .order('registered_at', { ascending: false });
-  if (student_id) query = query.eq('student_id', student_id);
-  if (status) query = query.eq('status', status);
-  const { data, error } = await query;
-  if (error) return res.status(500).json({ error: 'Could not load devices.' });
-  res.json({ devices: data });
+  try {
+    let query = supabaseAdmin
+      .from('devices')
+      .select('*, students(full_name, student_id, email, registered_ip, registered_mac)')
+      .order('registered_at', { ascending: false });
+    if (student_id) query = query.eq('student_id', student_id);
+    if (status) query = query.eq('status', status);
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Devices join query notice:', error.message || error);
+      let fallback = supabaseAdmin.from('devices').select('*').order('registered_at', { ascending: false });
+      if (student_id) fallback = fallback.eq('student_id', student_id);
+      if (status) fallback = fallback.eq('status', status);
+      const { data: rawDevices, error: err2 } = await fallback;
+      if (err2) {
+        console.error('Fallback devices query error:', err2);
+        return res.status(500).json({ error: 'Could not load devices.' });
+      }
+      let studentsMap = {};
+      try {
+        const { data: sData } = await supabaseAdmin.from('students').select('*');
+        if (Array.isArray(sData)) {
+          sData.forEach(s => { studentsMap[s.id] = s; });
+        }
+      } catch (_) {}
+      const devices = (rawDevices || []).map(d => ({
+        ...d,
+        students: studentsMap[d.student_id] || null,
+      }));
+      return res.json({ devices });
+    }
+    res.json({ devices: data || [] });
+  } catch (err) {
+    console.error('Error loading devices:', err);
+    res.status(500).json({ error: 'Could not load devices.' });
+  }
 });
 
 router.patch('/devices/:id/authorize', async (req, res) => {
@@ -262,14 +289,41 @@ router.patch('/devices/:id/reactivate', async (req, res) => {
 
 router.get('/students', async (req, res) => {
   const { search } = req.query;
-  let query = supabaseAdmin.from('students').select('*, devices(id, revoked_at, registered_at, ip_address, mac_address, user_agent, last_seen_at, webauthn_credential_id, status)');
-  if (search) {
-    const s = String(search).trim();
-    query = query.or(`full_name.ilike.%${s}%,student_id.ilike.%${s}%,email.ilike.%${s}%,registered_ip.ilike.%${s}%,registered_mac.ilike.%${s}%`);
+  try {
+    let query = supabaseAdmin.from('students').select('*, devices(id, revoked_at, registered_at, ip_address, mac_address, user_agent, last_seen_at, webauthn_credential_id, status)');
+    if (search) {
+      const s = String(search).trim();
+      query = query.or(`full_name.ilike.%${s}%,student_id.ilike.%${s}%,email.ilike.%${s}%`);
+    }
+    const { data, error } = await query.order('created_at', { ascending: false });
+    if (error) {
+       console.warn('Students join query notice:', error.message || error);
+       let fallbackQuery = supabaseAdmin.from('students').select('*').order('created_at', { ascending: false });
+       if (search) {
+         const s = String(search).trim();
+         fallbackQuery = fallbackQuery.or(`full_name.ilike.%${s}%,student_id.ilike.%${s}%,email.ilike.%${s}%`);
+       }
+       const { data: rawStudents, error: err2 } = await fallbackQuery;
+       if (err2) {
+         console.error('Fallback students query error:', err2);
+         return res.status(500).json({ error: 'Could not load students.' });
+       }
+       let devicesList = [];
+       try {
+         const { data: dData } = await supabaseAdmin.from('devices').select('*');
+         if (Array.isArray(dData)) devicesList = dData;
+       } catch (_) {}
+       const students = (rawStudents || []).map(st => ({
+         ...st,
+         devices: devicesList.filter(d => d.student_id === st.id),
+       }));
+       return res.json({ students });
+    }
+    res.json({ students: data || [] });
+  } catch (err) {
+    console.error('Error loading students:', err);
+    res.status(500).json({ error: 'Could not load students.' });
   }
-  const { data, error } = await query.order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: 'Could not load students.' });
-  res.json({ students: data });
 });
 
 router.patch('/students/:id/suspend', async (req, res) => {
@@ -359,28 +413,64 @@ router.post('/students/:id/reset-device', async (req, res) => {
 
 router.get('/attendance', async (req, res) => {
   const { from, to, location_id, student, punctuality } = req.query;
-  let query = supabaseAdmin
-    .from('attendance')
-    .select('*, students(full_name, student_id, registered_ip, registered_mac), locations(name)')
-    .order('recorded_at', { ascending: false })
-    .limit(500);
-  if (from) query = query.gte('recorded_at', from);
-  if (to) query = query.lte('recorded_at', to + 'T23:59:59');
-  if (location_id) query = query.eq('location_id', location_id);
-  if (punctuality && punctuality !== 'ALL') query = query.eq('punctuality', punctuality.toUpperCase());
-  if (student) {
-    // filter by student name or ID via a sub-query approach using student join
-    const { data: matched } = await supabaseAdmin
-      .from('students')
-      .select('id')
-      .or(`full_name.ilike.%${student}%,student_id.ilike.%${student}%`);
-    const ids = (matched || []).map(s => s.id);
-    if (ids.length === 0) return res.json({ attendance: [] });
-    query = query.in('student_id', ids);
+  try {
+    let query = supabaseAdmin
+      .from('attendance')
+      .select('*, students(full_name, student_id, registered_ip, registered_mac), locations(name)')
+      .order('recorded_at', { ascending: false })
+      .limit(500);
+    if (from) query = query.gte('recorded_at', from);
+    if (to) query = query.lte('recorded_at', to + 'T23:59:59');
+    if (location_id) query = query.eq('location_id', location_id);
+    if (punctuality && punctuality !== 'ALL') query = query.eq('punctuality', punctuality.toUpperCase());
+    if (student) {
+      // filter by student name or ID via a sub-query approach using student join
+      const { data: matched } = await supabaseAdmin
+        .from('students')
+        .select('id')
+        .or(`full_name.ilike.%${student}%,student_id.ilike.%${student}%`);
+      const ids = (matched || []).map(s => s.id);
+      if (ids.length === 0) return res.json({ attendance: [] });
+      query = query.in('student_id', ids);
+    }
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Attendance join query notice:', error.message || error);
+      let fallback = supabaseAdmin
+        .from('attendance')
+        .select('*')
+        .order('recorded_at', { ascending: false })
+        .limit(500);
+      if (from) fallback = fallback.gte('recorded_at', from);
+      if (to) fallback = fallback.lte('recorded_at', to + 'T23:59:59');
+      if (location_id) fallback = fallback.eq('location_id', location_id);
+      const { data: rawAtt, error: err2 } = await fallback;
+      if (err2) {
+        console.error('Fallback attendance query error:', err2);
+        return res.status(500).json({ error: 'Could not load attendance.' });
+      }
+
+      let studentsMap = {};
+      let locationsMap = {};
+      try {
+        const { data: sData } = await supabaseAdmin.from('students').select('*');
+        if (Array.isArray(sData)) sData.forEach(s => { studentsMap[s.id] = s; });
+        const { data: lData } = await supabaseAdmin.from('locations').select('*');
+        if (Array.isArray(lData)) lData.forEach(l => { locationsMap[l.id] = l; });
+      } catch (_) {}
+
+      const attendance = (rawAtt || []).map(a => ({
+        ...a,
+        students: studentsMap[a.student_id] || null,
+        locations: locationsMap[a.location_id] ? { name: locationsMap[a.location_id].name } : null,
+      }));
+      return res.json({ attendance });
+    }
+    res.json({ attendance: data || [] });
+  } catch (err) {
+    console.error('Error loading attendance:', err);
+    res.status(500).json({ error: 'Could not load attendance.' });
   }
-  const { data, error } = await query;
-  if (error) return res.status(500).json({ error: 'Could not load attendance.' });
-  res.json({ attendance: data });
 });
 
 // GET /admin/attendance/absent — get absent students for a session

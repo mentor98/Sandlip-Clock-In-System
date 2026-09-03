@@ -8,6 +8,8 @@ create table if not exists students (
   full_name text not null,
   student_id text unique not null,
   email text unique not null,
+  registered_ip text,
+  registered_mac text,
   role text not null default 'student', -- student | admin
   status text not null default 'active', -- active | suspended | deleted
   created_at timestamptz not null default now()
@@ -16,6 +18,7 @@ create table if not exists students (
 create table if not exists devices (
   id uuid primary key default gen_random_uuid(),
   student_id uuid references students(id) on delete cascade,
+  mac_address text,
   webauthn_credential_id text unique,
   public_key text,
   counter bigint not null default 0,
@@ -50,6 +53,8 @@ create table if not exists attendance (
   session_id uuid,
   risk_score integer,
   verification_status text, -- VERIFIED | REVIEW | REJECTED | AUTO_ABSENT
+  punctuality text default 'ON_TIME', -- EARLY | ON_TIME | LATE | AUTO_ABSENT
+  device_mac text,
   ip_address text,
   gps_accuracy double precision,
   is_late boolean default false,

@@ -111,17 +111,18 @@ router.post('/register', async (req, res) => {
     existing.registered_mac = clientMac;
     student = existing;
   } else {
-    const { data, error } = await supabaseAdmin
+    let insertPayload = {
+      full_name: cleanName,
+      student_id: cleanId,
+      email: cleanEmail,
+      registered_ip: clientIp,
+      registered_mac: clientMac,
+      status: 'active',
+      role: 'student',
+    };
+    let { data, error } = await supabaseAdmin
       .from('students')
-      .insert({
-        full_name: cleanName,
-        student_id: cleanId,
-        email: cleanEmail,
-        registered_ip: clientIp,
-        registered_mac: clientMac,
-        status: 'active',
-        role: 'student',
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
@@ -129,25 +130,66 @@ router.post('/register', async (req, res) => {
       if (error.code === '23505') {
         return res.status(409).json({ error: 'An account with that ID or email already exists.' });
       }
-      return res.status(500).json({ error: 'Could not create account.' });
+      console.warn('Initial student insert notice, retrying with core fields:', error.message || error);
+      const fallbackPayload = {
+        full_name: cleanName,
+        student_id: cleanId,
+        email: cleanEmail,
+        status: 'active',
+        role: 'student',
+      };
+      const retry = await supabaseAdmin
+        .from('students')
+        .insert(fallbackPayload)
+        .select()
+        .single();
+
+      if (retry.error) {
+        console.error('Final student insert failed:', retry.error);
+        if (retry.error.code === '23505') {
+          return res.status(409).json({ error: 'An account with that ID or email already exists.' });
+        }
+        return res.status(500).json({ error: 'Could not create account: ' + (retry.error.message || 'Database error') });
+      }
+      data = retry.data;
     }
     student = data;
 
     // Automatically bind the registering device
-    await supabaseAdmin
-      .from('devices')
-      .insert({
-        student_id: student.id,
-        mac_address: clientMac,
-        ip_address: clientIp,
-        webauthn_credential_id: `cred-${Date.now()}`,
-        public_key: 'direct-auth-fallback',
-        counter: 1,
-        status: 'AUTHORIZED',
-        user_agent: req.headers['user-agent'] || 'Direct Client',
-        last_seen_at: new Date().toISOString(),
-        registered_at: new Date().toISOString(),
-      });
+    try {
+      const devRes = await supabaseAdmin
+        .from('devices')
+        .insert({
+          student_id: student.id,
+          mac_address: clientMac,
+          ip_address: clientIp,
+          webauthn_credential_id: `cred-${Date.now()}`,
+          public_key: 'direct-auth-fallback',
+          counter: 1,
+          status: 'AUTHORIZED',
+          user_agent: req.headers['user-agent'] || 'Direct Client',
+          last_seen_at: new Date().toISOString(),
+          registered_at: new Date().toISOString(),
+        });
+      if (devRes && devRes.error) {
+        console.warn('Initial device insert notice, retrying without mac_address:', devRes.error.message || devRes.error);
+        await supabaseAdmin
+          .from('devices')
+          .insert({
+            student_id: student.id,
+            ip_address: clientIp,
+            webauthn_credential_id: `cred-${Date.now()}`,
+            public_key: 'direct-auth-fallback',
+            counter: 1,
+            status: 'AUTHORIZED',
+            user_agent: req.headers['user-agent'] || 'Direct Client',
+            last_seen_at: new Date().toISOString(),
+            registered_at: new Date().toISOString(),
+          });
+      }
+    } catch (dErr) {
+      console.warn('Device binding catch warning:', dErr.message);
+    }
   }
 
   const registrationToken = signSession({ studentId: student.id, role: 'pending-device-bind' });

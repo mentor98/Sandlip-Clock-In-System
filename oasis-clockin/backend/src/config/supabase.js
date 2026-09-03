@@ -20,7 +20,7 @@ const tables = {
       id: defaultAdminId,
       full_name: 'System Administrator',
       admin_id: 'ADMIN-001',
-      email: 'admin@oasis.edu',
+      email: 'emmitechfx@gmail.com',
       password_hash: defaultAdminHash,
       password_salt: defaultAdminSalt,
       created_at: new Date().toISOString(),
@@ -323,6 +323,32 @@ class MockQueryBuilder {
         return row[col].toLowerCase() === val.toLowerCase();
       }
       return false;
+    });
+    return this;
+  }
+
+  ilike(col, val) {
+    const raw = String(val == null ? '' : val);
+    const pattern = raw.toLowerCase().replace(/^%/, '').replace(/%$/, '');
+    this.filters.push((row) => {
+      const fieldVal = String(row[col] == null ? '' : row[col]).toLowerCase();
+      if (raw.startsWith('%') || raw.endsWith('%')) {
+        return fieldVal.includes(pattern);
+      }
+      return fieldVal === pattern;
+    });
+    return this;
+  }
+
+  like(col, val) {
+    const raw = String(val == null ? '' : val);
+    const pattern = raw.replace(/^%/, '').replace(/%$/, '');
+    this.filters.push((row) => {
+      const fieldVal = String(row[col] == null ? '' : row[col]);
+      if (raw.startsWith('%') || raw.endsWith('%')) {
+        return fieldVal.includes(pattern);
+      }
+      return fieldVal === pattern;
     });
     return this;
   }
