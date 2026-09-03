@@ -12,7 +12,65 @@ const {
 
 const router = express.Router();
 
-// ── Public: student reads active session ──────────────────────────────────────
+// Allow ?auth= or ?token= query param as fallback for endpoints opened via EventSource / window.open
+router.use((req, res, next) => {
+  if (!req.headers.authorization) {
+    const token = req.query.auth || req.query.token;
+    if (token) {
+      req.headers.authorization = `Bearer ${token}`;
+    }
+  }
+  next();
+});
+
+const eventBus = require('../utils/eventBus');
+
+// ── Public / Live Projector Endpoints ─────────────────────────────────────────
+
+// GET /api/sessions/:id/stream — Real-time Server-Sent Events stream for live session attendance
+router.get('/:id/stream', (req, res) => {
+  const sessionId = req.params.id;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  // Initial connection event
+  res.write(`event: connected\ndata: ${JSON.stringify({ sessionId, connectedAt: new Date().toISOString() })}\n\n`);
+
+  const onAttendance = (eventData) => {
+    try {
+      if (!eventData) return;
+      const evSessionId = String(eventData.sessionId || '');
+      const reqSessionId = String(sessionId || '');
+      if (!evSessionId || !reqSessionId || evSessionId === reqSessionId) {
+        res.write(`event: attendance\ndata: ${JSON.stringify(eventData.record || eventData)}\n\n`);
+      }
+    } catch (e) {
+      console.warn('SSE send notice:', e.message);
+    }
+  };
+
+  eventBus.on('attendance_recorded', onAttendance);
+
+  // Heartbeat comment every 15s to keep proxy connections alive
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch {
+      clearInterval(heartbeat);
+    }
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    eventBus.removeListener('attendance_recorded', onAttendance);
+  });
+});
 
 // GET /api/sessions/active — student polls this to know if a session is open
 router.get('/active', requireAuth, async (_req, res) => {

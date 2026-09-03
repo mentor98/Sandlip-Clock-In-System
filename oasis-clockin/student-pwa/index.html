@@ -256,16 +256,98 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           <span>Back</span>
         </button>
-        <span class="brand-title small" style="color:white">Scan Location QR</span>
+        <span class="brand-title small" style="color:white">Scan Classroom QR</span>
+      </div>
+
+      <!-- Active Student Badge in Scanner -->
+      <div class="scan-student-bar">
+        <div class="scan-student-info">
+          <span class="scan-student-sub">Attending as:</span>
+          <strong id="scan-student-name">SAN-2026-014 (Ada Lovelace)</strong>
+        </div>
+        <button id="btn-scan-change-student" class="scan-btn-link" type="button">Change ID</button>
+      </div>
+
+      <!-- Quick Student Switcher Popup / Input -->
+      <div id="scan-student-picker" class="scan-student-picker" style="display: none;">
+        <label for="scan-student-input">Student / Matric ID:</label>
+        <div style="display: flex; gap: 6px; margin-top: 4px;">
+          <input id="scan-student-input" placeholder="e.g. SAN-2026-014" value="SAN-2026-014" />
+          <button id="btn-scan-set-student" class="btn-primary" style="padding: 6px 14px; font-size: 13px;" type="button">Set</button>
+        </div>
+        <div class="scan-quick-pills">
+          <button type="button" class="scan-pill" data-id="SAN-2026-014">Ada (014)</button>
+          <button type="button" class="scan-pill" data-id="SAN-2026-089">Charles (089)</button>
+          <button type="button" class="scan-pill" data-id="SAN-2026-015">Grace (015)</button>
+        </div>
       </div>
       
       <div class="video-container">
         <video id="scan-video" playsinline autoplay muted></video>
-        <div class="scan-target-box">
+        <div class="scan-target-box" id="scan-target-box">
           <span class="corner top-left"></span>
           <span class="corner top-right"></span>
           <span class="corner bottom-left"></span>
           <span class="corner bottom-right"></span>
+          <div class="laser-scanner" id="laser-scanner"></div>
+        </div>
+      </div>
+
+      <!-- Real-time Validation HUD Overlay -->
+      <div id="scan-validation-hud" class="scan-validation-hud" style="display: none;">
+        <div class="hud-header">
+          <span class="hud-pulse"></span>
+          <strong id="hud-status-title">Capturing &amp; Validating Attendance…</strong>
+        </div>
+
+        <div class="hud-steps">
+          <div class="hud-step" id="hud-step-qr">
+            <div class="hud-step-icon" id="hud-icon-qr">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            </div>
+            <div class="hud-step-body">
+              <span class="hud-step-title">Dynamic QR Code</span>
+              <span class="hud-step-desc" id="hud-desc-qr">Camera captured classroom token</span>
+            </div>
+            <span class="hud-badge wait" id="hud-badge-qr">CAPTURED</span>
+          </div>
+
+          <div class="hud-step" id="hud-step-network">
+            <div class="hud-step-icon" id="hud-icon-network">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            </div>
+            <div class="hud-step-body">
+              <span class="hud-step-title">Connected Network &amp; IP</span>
+              <span class="hud-step-desc" id="hud-desc-network">Comparing IP &amp; subnet against classroom</span>
+            </div>
+            <span class="hud-badge wait" id="hud-badge-network">CHECKING…</span>
+          </div>
+
+          <div class="hud-step" id="hud-step-mac">
+            <div class="hud-step-icon" id="hud-icon-mac">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+            </div>
+            <div class="hud-step-body">
+              <span class="hud-step-title">Hardware MAC Address</span>
+              <span class="hud-step-desc" id="hud-desc-mac">Validating registered device hardware binding</span>
+            </div>
+            <span class="hud-badge wait" id="hud-badge-mac">CHECKING…</span>
+          </div>
+
+          <div class="hud-step" id="hud-step-geo">
+            <div class="hud-step-icon" id="hud-icon-geo">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <div class="hud-step-body">
+              <span class="hud-step-title">Classroom Geofence</span>
+              <span class="hud-step-desc" id="hud-desc-geo">Validating GPS perimeter radius</span>
+            </div>
+            <span class="hud-badge wait" id="hud-badge-geo">CHECKING…</span>
+          </div>
+        </div>
+
+        <div class="hud-banner" id="hud-banner">
+          Comparing network connection and device telemetry…
         </div>
       </div>
 

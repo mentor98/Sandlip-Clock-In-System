@@ -2,6 +2,7 @@ const express = require('express');
 const { supabaseAdmin } = require('../config/supabase');
 const { requireAuth } = require('../middleware/auth');
 const { validateAttendance } = require('../services/attendanceValidator');
+const eventBus = require('../utils/eventBus');
 
 const router = express.Router();
 
@@ -116,6 +117,22 @@ function makeHandler(attendanceType) {
       punctuality: result.punctuality,
       checks: result.checks,
     });
+
+    if (row) {
+      const { data: stu } = await supabaseAdmin
+        .from('students')
+        .select('id, full_name, student_id, email, registered_ip, registered_mac')
+        .eq('id', studentId)
+        .maybeSingle();
+
+      eventBus.emit('attendance_recorded', {
+        sessionId: result.activeSession?.id || row.session_id,
+        record: {
+          ...row,
+          students: stu || { id: studentId, full_name: result.details.student?.name || 'Student' },
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,

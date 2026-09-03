@@ -3,6 +3,7 @@ const { supabaseAdmin } = require('../config/supabase');
 const { signSession } = require('../config/jwt');
 const { requireAuth } = require('../middleware/auth');
 const { validateAttendance } = require('../services/attendanceValidator');
+const eventBus = require('../utils/eventBus');
 
 const router = express.Router();
 
@@ -308,7 +309,7 @@ router.post('/direct-login', async (req, res) => {
 
 // POST /api/auth/clockin-direct — Seamless 1-step direct Clock-In for student by ID
 router.post('/clockin-direct', async (req, res) => {
-  const { student_id, device_mac, latitude, longitude, accuracy, location_id, location_token, attendance_type = 'clock_in' } = req.body || {};
+  const { student_id, device_mac, latitude, longitude, accuracy, location_id, location_token, session_id, attendance_type = 'clock_in' } = req.body || {};
   if (!student_id) {
     return res.status(400).json({ error: 'student_id is required.' });
   }
@@ -391,6 +392,7 @@ router.post('/clockin-direct', async (req, res) => {
     accuracy: accuracy || 15,
     locationId: location_id,
     locationToken: location_token,
+    sessionId: session_id,
     clientIp,
     attendanceType: attendance_type,
   });
@@ -398,6 +400,7 @@ router.post('/clockin-direct', async (req, res) => {
   // Record attendance row
   let attendanceRecord = null;
   if (result.approved) {
+    const targetSessionId = session_id || result.activeSession?.id || null;
     const { data: row } = await supabaseAdmin
       .from('attendance')
       .insert({
@@ -409,7 +412,7 @@ router.post('/clockin-direct', async (req, res) => {
         longitude: longitude != null ? longitude : 11.3307533,
         device_id: deviceId,
         device_mac: device_mac || device?.mac_address || student.registered_mac || null,
-        session_id: result.activeSession?.id || null,
+        session_id: targetSessionId,
         risk_score: result.riskScore,
         verification_status: result.status,
         punctuality: result.punctuality || 'EARLY',
@@ -420,6 +423,23 @@ router.post('/clockin-direct', async (req, res) => {
       .select()
       .single();
     attendanceRecord = row;
+
+    if (row) {
+      eventBus.emit('attendance_recorded', {
+        sessionId: targetSessionId,
+        record: {
+          ...row,
+          students: {
+            id: student.id,
+            full_name: student.full_name,
+            student_id: student.student_id,
+            email: student.email,
+            registered_ip: student.registered_ip,
+            registered_mac: student.registered_mac,
+          },
+        },
+      });
+    }
   }
 
   res.json({

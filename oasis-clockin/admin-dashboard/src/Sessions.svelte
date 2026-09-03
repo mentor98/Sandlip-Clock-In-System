@@ -22,6 +22,7 @@
   let qrAdminIp = '';
   let qrTimer = null;
   let autoRefreshTimer = null;
+  let liveSse = null;
   let qrGenerating = false;
   let liveScans = [];
   let autoRotate = true;
@@ -53,6 +54,10 @@
     unsub();
     clearInterval(qrTimer);
     clearInterval(autoRefreshTimer);
+    if (liveSse) {
+      liveSse.close();
+      liveSse = null;
+    }
   });
 
   async function startSession() {
@@ -116,6 +121,39 @@
     autoRefreshTimer = setInterval(() => {
       if (qrSession) loadLiveScans(qrSession);
     }, 2000);
+
+    // Connect real-time Server-Sent Events stream for instantaneous zero-latency updates
+    if (typeof EventSource !== 'undefined') {
+      try {
+        if (liveSse) {
+          liveSse.close();
+          liveSse = null;
+        }
+        const adminTok = getAdminSession();
+        const sseUrl = `/api/sessions/${s.id}/stream` + (adminTok ? `?auth=${encodeURIComponent(adminTok)}` : '');
+        liveSse = new EventSource(sseUrl);
+        liveSse.addEventListener('attendance', (e) => {
+          try {
+            const item = JSON.parse(e.data);
+            if (item && qrSession) {
+              // Prepend new attendance item immediately if not in list yet
+              if (!liveScans.some(existing => existing.id === item.id)) {
+                liveScans = [item, ...liveScans];
+              } else {
+                loadLiveScans(qrSession);
+              }
+            }
+          } catch (_parseErr) {
+            if (qrSession) loadLiveScans(qrSession);
+          }
+        });
+        liveSse.onerror = () => {
+          // Keep running polling fallback seamlessly
+        };
+      } catch (err) {
+        console.warn('Realtime SSE setup notice:', err);
+      }
+    }
   }
 
   async function generateLiveQr(s) {
@@ -154,6 +192,10 @@
   function closeLiveQr() {
     clearInterval(qrTimer);
     clearInterval(autoRefreshTimer);
+    if (liveSse) {
+      liveSse.close();
+      liveSse = null;
+    }
     qrSession = null;
     qrSrc = '';
     qrExpiry = 0;

@@ -915,7 +915,104 @@ if (quickActiveQrBtn) {
   };
 }
 
+// Scanner Identity Controls
+function setupScannerIdentityControls() {
+  const changeBtn = document.getElementById('btn-scan-change-student');
+  const pickerEl = document.getElementById('scan-student-picker');
+  const setBtn = document.getElementById('btn-scan-set-student');
+  const inputEl = document.getElementById('scan-student-input');
+  const displayEl = document.getElementById('scan-student-name');
+
+  function updateDisplay(id, name) {
+    const studentId = id || localStorage.getItem('oasis_student_id') || state.studentId || 'SAN-2026-014';
+    const studentName = name || localStorage.getItem('oasis_student_name') || state.studentName || 'Ada Lovelace';
+    state.studentId = studentId;
+    state.studentName = studentName;
+    localStorage.setItem('oasis_student_id', studentId);
+    if (studentName) localStorage.setItem('oasis_student_name', studentName);
+    if (displayEl) displayEl.textContent = `${studentId} (${studentName})`;
+    if (inputEl) inputEl.value = studentId;
+
+    const signinInput = document.getElementById('student-id');
+    if (signinInput && !signinInput.value.trim()) signinInput.value = studentId;
+  }
+
+  if (changeBtn && pickerEl) {
+    changeBtn.onclick = () => {
+      pickerEl.style.display = pickerEl.style.display === 'none' ? 'block' : 'none';
+      if (inputEl) inputEl.focus();
+    };
+  }
+
+  if (setBtn && inputEl) {
+    setBtn.onclick = () => {
+      const val = inputEl.value.trim();
+      if (val) {
+        let matchedName = 'Student';
+        if (/014/i.test(val)) matchedName = 'Ada Lovelace';
+        else if (/089/i.test(val)) matchedName = 'Charles Babbage';
+        else if (/015/i.test(val)) matchedName = 'Grace Hopper';
+        updateDisplay(val, matchedName);
+        if (pickerEl) pickerEl.style.display = 'none';
+      }
+    };
+  }
+
+  document.querySelectorAll('.scan-pill').forEach(pill => {
+    pill.onclick = () => {
+      const id = pill.getAttribute('data-id');
+      if (id) {
+        let matchedName = 'Student';
+        if (/014/i.test(id)) matchedName = 'Ada Lovelace';
+        else if (/089/i.test(id)) matchedName = 'Charles Babbage';
+        else if (/015/i.test(id)) matchedName = 'Grace Hopper';
+        updateDisplay(id, matchedName);
+        if (pickerEl) pickerEl.style.display = 'none';
+      }
+    };
+  });
+
+  // Initial load
+  updateDisplay();
+}
+
+// Sound chirp on capture
+function playScanChirp(success = true) {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    
+    if (success) {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.2);
+    } else {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.25);
+    }
+  } catch (_e) { /* AudioContext policy */ }
+}
+
 async function startScanner() {
+  setupScannerIdentityControls();
+  const hud = document.getElementById('scan-validation-hud');
+  if (hud) hud.style.display = 'none';
+  const targetBox = document.getElementById('scan-target-box');
+  if (targetBox) targetBox.classList.remove('captured');
+
   const video = document.getElementById('scan-video');
   try {
     videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
@@ -954,8 +1051,14 @@ function tickScanner() {
   scanAnimFrame = requestAnimationFrame(tickScanner);
 }
 
+let isScanningValidationActive = false;
+
 async function handleQrScanned(data) {
-  if (!data) return;
+  if (!data || isScanningValidationActive) return;
+  isScanningValidationActive = true;
+
+  playScanChirp(true);
+
   let locId = null;
   let token = null;
   let sessId = null;
@@ -976,28 +1079,179 @@ async function handleQrScanned(data) {
   updateQrBadges();
   stopScanner();
 
-  const origin = state.originScreenBeforeScan || 'screen-signin';
-  if (origin === 'screen-home' || state.sessionToken) {
-    showScreen('screen-home');
-    // Automatically trigger clock in with the scanned QR token
-    const btnClock = document.getElementById('btn-clock');
-    if (btnClock) {
-      setTimeout(() => btnClock.click(), 100);
-    }
-  } else {
-    showScreen('screen-signin');
-    const studentInput = document.getElementById('student-id');
-    const storedId = localStorage.getItem('oasis_student_id') || state.studentId;
-    if (studentInput && !studentInput.value.trim() && storedId) {
-      studentInput.value = storedId;
-    }
-    const currentId = studentInput ? studentInput.value.trim() : '';
-    if (currentId) {
-      setTimeout(() => doDirectClockIn(currentId), 100);
+  // Highlight target box as captured
+  const targetBox = document.getElementById('scan-target-box');
+  if (targetBox) targetBox.classList.add('captured');
+
+  // Activate Step-by-Step Validation HUD
+  const hud = document.getElementById('scan-validation-hud');
+  const titleEl = document.getElementById('hud-status-title');
+  const bannerEl = document.getElementById('hud-banner');
+
+  const badgeQr = document.getElementById('hud-badge-qr');
+  const iconQr = document.getElementById('hud-icon-qr');
+  const descQr = document.getElementById('hud-desc-qr');
+
+  const badgeNet = document.getElementById('hud-badge-network');
+  const iconNet = document.getElementById('hud-icon-network');
+  const descNet = document.getElementById('hud-desc-network');
+
+  const badgeMac = document.getElementById('hud-badge-mac');
+  const iconMac = document.getElementById('hud-icon-mac');
+  const descMac = document.getElementById('hud-desc-mac');
+
+  const badgeGeo = document.getElementById('hud-badge-geo');
+  const iconGeo = document.getElementById('hud-icon-geo');
+  const descGeo = document.getElementById('hud-desc-geo');
+
+  if (hud) hud.style.display = 'block';
+  if (titleEl) titleEl.textContent = 'Capturing & Validating Telemetry…';
+  if (bannerEl) {
+    bannerEl.className = 'hud-banner';
+    bannerEl.textContent = 'Comparing device Wi-Fi, IP address, and MAC address…';
+  }
+
+  // Step 1: Dynamic QR Code Verified
+  if (badgeQr) { badgeQr.className = 'hud-badge ok'; badgeQr.textContent = 'CAPTURED'; }
+  if (iconQr) iconQr.className = 'hud-step-icon ok';
+  if (descQr) descQr.textContent = `Token: ${token.slice(0, 10)}… (Single-Use HMAC)`;
+
+  // Resolve Student ID
+  const scanInput = document.getElementById('scan-student-input');
+  const signinInput = document.getElementById('student-id');
+  const resolvedStudentId = (scanInput ? scanInput.value.trim() : '') ||
+                            (signinInput ? signinInput.value.trim() : '') ||
+                            localStorage.getItem('oasis_student_id') ||
+                            state.studentId ||
+                            'SAN-2026-014';
+
+  // Step 2 & 3: Display checking status
+  if (badgeNet) { badgeNet.className = 'hud-badge wait'; badgeNet.textContent = 'CHECKING…'; }
+  if (descNet) descNet.textContent = 'Verifying connected client IP against campus host…';
+
+  if (badgeMac) { badgeMac.className = 'hud-badge wait'; badgeMac.textContent = 'CHECKING…'; }
+  if (descMac) descMac.textContent = `Matching hardware MAC (${state.deviceMac || 'BE:64:B4:14:4D:67'})…`;
+
+  if (badgeGeo) { badgeGeo.className = 'hud-badge wait'; badgeGeo.textContent = 'CHECKING…'; }
+  if (descGeo) descGeo.textContent = 'Resolving GPS coordinates & geofence radius…';
+
+  try {
+    // Obtain live GPS location
+    state.lastLocation = await getPosition();
+
+    // Call unified validation and attendance recording endpoint
+    const payload = {
+      student_id: resolvedStudentId,
+      latitude: state.lastLocation.latitude,
+      longitude: state.lastLocation.longitude,
+      accuracy: state.lastLocation.accuracy,
+      device_mac: state.deviceMac || 'BE:64:B4:14:4D:67',
+      location_id: locId,
+      location_token: token,
+      session_id: sessId || state.pendingQrSessionId || undefined,
+      attendance_type: 'clock_in',
+    };
+
+    const res = await api('/auth/clockin-direct', { method: 'POST', body: payload, auth: false });
+
+    if (res.success || res.status === 'VERIFIED') {
+      playScanChirp(true);
+
+      // Step 2: Network & IP Passed
+      if (badgeNet) { badgeNet.className = 'hud-badge ok'; badgeNet.textContent = 'VERIFIED'; }
+      if (iconNet) iconNet.className = 'hud-step-icon ok';
+      if (descNet) descNet.textContent = `IP ${res.checks?.clientIp || '192.168.1.156'} matched campus subnet`;
+
+      // Step 3: Hardware MAC Passed
+      if (badgeMac) { badgeMac.className = 'hud-badge ok'; badgeMac.textContent = 'MATCHED'; }
+      if (iconMac) iconMac.className = 'hud-step-icon ok';
+      if (descMac) descMac.textContent = `Hardware MAC ${res.details?.device?.macAddress || state.deviceMac || 'BE:64:B4:14:4D:67'} authorized`;
+
+      // Step 4: Geofence Passed
+      if (badgeGeo) { badgeGeo.className = 'hud-badge ok'; badgeGeo.textContent = 'INSIDE'; }
+      if (iconGeo) iconGeo.className = 'hud-step-icon ok';
+      if (descGeo) descGeo.textContent = `Proximity: ${res.distanceM != null ? res.distanceM + 'm' : 'verified'} inside classroom`;
+
+      if (titleEl) titleEl.textContent = 'Attendance Verified! Present';
+      if (bannerEl) {
+        bannerEl.className = 'hud-banner success';
+        bannerEl.textContent = `All checks passed! ${res.student?.full_name || resolvedStudentId} marked as ${res.punctualityLabel || res.punctuality || 'PRESENT'}. Real-time sync complete!`;
+      }
+
+      // Store student & session state
+      saveSession({ sessionToken: res.sessionToken, deviceId: res.deviceId });
+      const finalStudent = res.student || {};
+      const studentId = finalStudent.student_id || resolvedStudentId;
+      const studentName = finalStudent.full_name || resolvedStudentId;
+      localStorage.setItem('oasis_student_id', studentId);
+      localStorage.setItem('oasis_student_name', studentName);
+      state.studentId = studentId;
+      state.studentName = studentName;
+
+      // Clear pending QR
+      state.pendingQrLocationId = null;
+      state.pendingQrToken = null;
+      updateQrBadges();
+
+      // Smoothly navigate to Home Screen with Verification Card after brief confirmation
+      setTimeout(async () => {
+        isScanningValidationActive = false;
+        showScreen('screen-home');
+        await initHome();
+        showVerificationCard({
+          status: res.status,
+          score: res.riskScore,
+          punctuality: res.punctuality,
+          punctualityLabel: res.punctualityLabel,
+          isLate: res.isLate,
+          message: `QR code validated! IP, MAC, and geofence verified. Marked as ${res.punctualityLabel || res.punctuality || 'PRESENT'}.`,
+          checks: res.checks,
+        });
+      }, 1400);
+      return;
     } else {
-      showSigninAlert('Classroom QR scanned successfully! Enter your Student ID below to validate Wi-Fi, IP, MAC & Location and record your attendance.');
-      if (studentInput) studentInput.focus();
+      // Failed critical checks
+      playScanChirp(false);
+      const reasons = (res.details?.criticalFailures && res.details.criticalFailures.length > 0)
+        ? res.details.criticalFailures.join('. ')
+        : (res.message || 'Validation failed.');
+
+      if (res.checks?.approvedNetwork === false || res.checks?.ipSubnetMatch === false) {
+        if (badgeNet) { badgeNet.className = 'hud-badge err'; badgeNet.textContent = 'MISMATCH'; }
+        if (iconNet) iconNet.className = 'hud-step-icon err';
+      }
+      if (res.checks?.deviceMacMatch === false || res.checks?.authorizedDevice === false) {
+        if (badgeMac) { badgeMac.className = 'hud-badge err'; badgeMac.textContent = 'REJECTED'; }
+        if (iconMac) iconMac.className = 'hud-step-icon err';
+      }
+      if (res.checks?.insideGeofence === false) {
+        if (badgeGeo) { badgeGeo.className = 'hud-badge err'; badgeGeo.textContent = 'OUT OF ZONE'; }
+        if (iconGeo) iconGeo.className = 'hud-step-icon err';
+      }
+
+      if (titleEl) titleEl.textContent = 'Validation Rejected';
+      if (bannerEl) {
+        bannerEl.className = 'hud-banner failed';
+        bannerEl.textContent = reasons;
+      }
+
+      setTimeout(() => {
+        isScanningValidationActive = false;
+        startScanner();
+      }, 3500);
     }
+  } catch (err) {
+    playScanChirp(false);
+    console.error('Validation error:', err);
+    if (titleEl) titleEl.textContent = 'Verification Error';
+    if (bannerEl) {
+      bannerEl.className = 'hud-banner failed';
+      bannerEl.textContent = err.message || 'Network error during validation. Retrying…';
+    }
+    setTimeout(() => {
+      isScanningValidationActive = false;
+      startScanner();
+    }, 3000);
   }
 }
 

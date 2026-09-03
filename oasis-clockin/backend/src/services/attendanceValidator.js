@@ -178,6 +178,7 @@ async function validateAttendance(params) {
     studentId, deviceId, deviceMac,
     latitude, longitude, accuracy,
     locationId, locationToken,
+    sessionId,
     clientIp = '192.168.1.156',
     attendanceType = 'clock_in',
   } = params;
@@ -386,21 +387,46 @@ async function validateAttendance(params) {
   };
 
   // ── 5. Active attendance session ───────────────────────────────────────────
-  const { data: activeSession } = await supabaseAdmin
-    .from('attendance_sessions')
-    .select('id, title, location_id, started_at, ends_at')
-    .eq('status', 'ACTIVE')
-    .lte('started_at', new Date().toISOString())
-    .order('started_at', { ascending: false })
-    .limit(1)
-    .single();
+  let activeSession = null;
+  if (sessionId) {
+    try {
+      const { data: sById } = await supabaseAdmin
+        .from('attendance_sessions')
+        .select('id, title, location_id, started_at, ends_at, status, admin_ip, created_by')
+        .eq('id', sessionId)
+        .single();
+      if (sById) activeSession = sById;
+    } catch (_) {}
+    if (!activeSession) {
+      activeSession = inMemorySessions.find(s => s.id === sessionId) || null;
+    }
+  }
+
+  if (!activeSession) {
+    try {
+      const { data: qSession } = await supabaseAdmin
+        .from('attendance_sessions')
+        .select('id, title, location_id, started_at, ends_at, status, admin_ip, created_by')
+        .eq('status', 'ACTIVE')
+        .lte('started_at', new Date().toISOString())
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .single();
+      if (qSession) activeSession = qSession;
+    } catch (_) {}
+    if (!activeSession) {
+      activeSession = inMemorySessions.find(s => s.status === 'ACTIVE') || null;
+    }
+  }
 
   if (activeSession) {
     if (activeSession.ends_at && new Date(activeSession.ends_at) < new Date()) {
-      await supabaseAdmin
-        .from('attendance_sessions')
-        .update({ status: 'EXPIRED', closed_at: new Date().toISOString() })
-        .eq('id', activeSession.id);
+      try {
+        await supabaseAdmin
+          .from('attendance_sessions')
+          .update({ status: 'EXPIRED', closed_at: new Date().toISOString() })
+          .eq('id', activeSession.id);
+      } catch (_) {}
       details.session = null;
     } else {
       checks.activeSession = true;
