@@ -3,7 +3,7 @@
 // stores it in IndexedDB via the Background Sync API and replays it once
 // connectivity returns.
 
-const CACHE_NAME = 'oasis-clockin-v3';
+const CACHE_NAME = 'oasis-clockin-v4';
 const SHELL = ['/', 'index.html', 'style.css', 'app.js', 'manifest.json'];
 
 self.addEventListener('install', (event) => {

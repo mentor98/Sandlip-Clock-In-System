@@ -923,3 +923,157 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
   flex: 1;
 }
 
+/* ══ ANIMATED "MARK GOOD" ATTENDANCE SUCCESS MODAL ══════════════════════════ */
+.modal-success-card {
+  max-width: 460px;
+  text-align: center;
+  padding: 30px 24px 22px;
+  position: relative;
+  background: #ffffff;
+  border-radius: 20px;
+  border: 1px solid rgba(13, 148, 136, 0.25);
+  box-shadow: 0 24px 48px -12px rgba(15, 118, 110, 0.28), 0 0 0 1px rgba(13, 148, 136, 0.08);
+}
+
+.success-animation-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 0 18px;
+  position: relative;
+}
+
+.checkmark-svg {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  display: block;
+  stroke-width: 3.5;
+  stroke: #0d9488;
+  stroke-miterlimit: 10;
+  box-shadow: 0 0 0 8px rgba(13, 148, 136, 0.12), 0 8px 24px rgba(13, 148, 136, 0.22);
+  animation: scalePop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+.checkmark-circle {
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  stroke-width: 3.5;
+  stroke-miterlimit: 10;
+  stroke: #0d9488;
+  fill: #f0fdf4;
+  animation: strokeCircle 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+.checkmark-check {
+  transform-origin: 50% 50%;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  stroke: #059669;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  animation: strokeCheck 0.4s cubic-bezier(0.65, 0, 0.45, 1) 0.45s forwards;
+}
+
+@keyframes strokeCircle {
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes strokeCheck {
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes scalePop {
+  0%, 100% {
+    transform: none;
+  }
+  50% {
+    transform: scale3d(1.1, 1.1, 1);
+  }
+}
+
+.success-header h2 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 10px 0 6px;
+  letter-spacing: -0.02em;
+}
+
+.success-badge {
+  display: inline-block;
+  background: #ccfbf1;
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(15, 118, 110, 0.25);
+}
+
+.success-greeting {
+  font-size: 14px;
+  color: #334155;
+  margin: 0 0 16px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.attendance-details-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  text-align: left;
+  margin-bottom: 18px;
+  font-size: 12.5px;
+}
+
+.attendance-details-panel .detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.attendance-details-panel .detail-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.attendance-details-panel .detail-label {
+  color: #64748b;
+  font-size: 11.5px;
+}
+.attendance-details-panel .detail-val {
+  color: #0f172a;
+  font-weight: 600;
+  text-align: right;
+  max-width: 62%;
+}
+.attendance-details-panel .text-success {
+  color: #059669;
+}
+.sync-live-tag {
+  background: #ecfdf5;
+  color: #047857;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.btn-clocked-in {
+  background: #ecfdf5 !important;
+  color: #065f46 !important;
+  border: 1.5px solid #a7f3d0 !important;
+  box-shadow: none !important;
+  cursor: default !important;
+}
+
+

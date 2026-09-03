@@ -418,7 +418,63 @@
     </div>
   </div>
 
+  <!-- ══ ATTENDANCE SUCCESSFUL "MARK GOOD" MODAL ═════════════════════════════ -->
+  <div id="modal-attendance-success" class="modal-backdrop" style="display: none;">
+    <div class="modal-card modal-success-card" id="modal-success-card">
+      <div class="success-animation-container">
+        <svg class="checkmark-svg" viewBox="0 0 52 52">
+          <circle class="checkmark-circle" cx="26" cy="26" r="25" fill="none"/>
+          <path class="checkmark-check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+        </svg>
+      </div>
+
+      <div class="success-header">
+        <span class="success-badge" id="modal-success-badge">ATTENDANCE RECORDED</span>
+        <h2 id="modal-success-title">Attendance Recorded Successfully!</h2>
+        <p class="success-greeting" id="modal-success-greeting">Hi, Emmanuel Timothy, you have successfully taken your attendance!</p>
+      </div>
+
+      <div class="attendance-details-panel">
+        <div class="detail-row">
+          <span class="detail-label">Student</span>
+          <strong class="detail-val" id="modal-success-student">Emmanuel Timothy (SAN-2026-014)</strong>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Class Session</span>
+          <span class="detail-val" id="modal-success-session">Morning Class &amp; Lab Session</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Punctuality</span>
+          <span class="detail-val" id="modal-success-punctuality"><span class="punct-pill punct-on_time">On Time</span></span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Recorded Time</span>
+          <span class="detail-val" id="modal-success-time">12:38:51 PM · Thursday, 3 Sept 2026</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Classroom Location</span>
+          <span class="detail-val" id="modal-success-location">Sandlip Oasis - Lecture &amp; Hall Complex</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Security Checks</span>
+          <span class="detail-val text-success" id="modal-success-security">✓ 4/4 Verified (QR, Hardware MAC, Campus IP, Geofence)</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">System Interconnection</span>
+          <span class="detail-val" id="modal-success-sync"><span class="sync-live-tag">🟢 Live Synced with Admin Dashboard</span></span>
+        </div>
+      </div>
+
+      <div class="modal-success-actions">
+        <button id="btn-success-done" class="btn-primary" type="button" style="width: 100%; justify-content: center; padding: 12px 18px; font-size: 15px; font-weight: 600; cursor: pointer;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Done (View Dashboard)</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script src="app.js?v=2.3"></script>
+  <script src="app.js?v=2.4"></script>
 </body>
 </html>
