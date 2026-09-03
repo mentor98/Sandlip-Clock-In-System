@@ -27,13 +27,24 @@
   let liveScans = [];
   let autoRotate = true;
 
+  let sessionToDelete = null;
+  let deletingSession = false;
+
+  let loadTimer = null;
+  function debouncedLoad() {
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(() => {
+      load();
+    }, 300);
+  }
+
   async function load() {
     try {
       const [sessRes, locRes] = await Promise.all([
         api('/sessions'),
         api('/admin/locations'),
       ]);
-      sessions = sessRes.sessions || [];
+      sessions = (sessRes.sessions || []).sort((a, b) => new Date(b.started_at || b.created_at) - new Date(a.started_at || a.created_at));
       locations = locRes.locations || [];
       if (locations.length === 0) {
         locations = [{ id: 'c0000000-0000-0000-0000-000000000001', name: 'Sandlip Oasis - Lecture & Hall Complex' }];
@@ -55,11 +66,14 @@
       }
     }
     if (viewingSession) viewAttendance(viewingSession);
-    if (qrSession) loadLiveScans(qrSession);
   });
 
+  const unsubSessions = subscribeTable('sessions', '*', debouncedLoad);
+
   onDestroy(() => {
+    clearTimeout(loadTimer);
     unsub();
+    unsubSessions();
     clearInterval(qrTimer);
     clearInterval(autoRefreshTimer);
     if (liveSse) {
@@ -97,13 +111,26 @@
     } catch (e) { error = e.message; }
   }
 
-  async function deleteSession(s) {
-    if (!confirm(`Delete session "${s.title}"?`)) return;
+  function promptDelete(s) {
+    sessionToDelete = s;
+  }
+
+  async function confirmDeleteSession() {
+    if (!sessionToDelete) return;
+    const s = sessionToDelete;
+    deletingSession = true;
+    error = '';
     try {
       await api(`/sessions/${s.id}`, { method: 'DELETE' });
+      successMsg = `Session "${s.title}" deleted successfully.`;
       if (qrSession?.id === s.id) closeLiveQr();
-      load();
-    } catch (e) { error = e.message; }
+      sessionToDelete = null;
+      await load();
+    } catch (e) {
+      error = e.message;
+    } finally {
+      deletingSession = false;
+    }
   }
 
   async function viewAttendance(s) {
@@ -414,6 +441,44 @@
     </div>
   {/if}
 
+  <!-- Delete Session Confirmation Modal -->
+  {#if sessionToDelete}
+    <div class="modal-overlay" on:click|self={() => sessionToDelete = null}>
+      <div class="modal modal-delete-confirm">
+        <div class="modal-header">
+          <div class="confirm-head-left">
+            <div class="confirm-icon-badge">
+              <Icon name="trash" size={18} color="#dc2626" />
+            </div>
+            <h3>Delete Session</h3>
+          </div>
+          <button class="icon-btn-ghost" on:click={() => sessionToDelete = null}>✕</button>
+        </div>
+        <div class="modal-body confirm-modal-body">
+          <p class="confirm-lead-text">Are you sure you want to delete this session?</p>
+          <div class="confirm-session-card">
+            <strong class="confirm-title">{sessionToDelete.title}</strong>
+            <div class="confirm-meta-row">
+              <span class="confirm-loc">{sessionToDelete.locations?.name || 'Assigned Campus'}</span>
+              <span class="confirm-dot">•</span>
+              <span class="confirm-time">Started {new Date(sessionToDelete.started_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+            </div>
+          </div>
+          <p class="confirm-sub-text">This will permanently remove this session record from the dashboard.</p>
+        </div>
+        <div class="modal-actions confirm-actions">
+          <button class="btn ghost" on:click={() => sessionToDelete = null} disabled={deletingSession}>
+            Cancel
+          </button>
+          <button class="btn btn-danger" on:click={confirmDeleteSession} disabled={deletingSession}>
+            <Icon name="trash" size={14} />
+            <span>{deletingSession ? 'Deleting…' : 'Yes, Delete Session'}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- Sessions table -->
   <div class="table-wrap">
     <div class="table-header-bar">
@@ -466,7 +531,7 @@
                     <span>Close</span>
                   </button>
                 {/if}
-                <button class="btn btn-sm btn-del" on:click={() => deleteSession(s)} title="Delete session">
+                <button class="btn btn-sm btn-del" on:click={() => promptDelete(s)} title="Delete session">
                   <Icon name="trash" size={13} />
                 </button>
               </td>
@@ -728,6 +793,76 @@
   .modal-actions {
     padding: 14px 22px; border-top: 1px solid #e2e8f0;
     display: flex; justify-content: flex-end; background: #f8fafc;
+  }
+
+  .modal-delete-confirm {
+    max-width: 440px;
+    width: 90vw;
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .confirm-head-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .confirm-icon-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: #fef2f2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .confirm-modal-body {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .confirm-lead-text {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+  }
+  .confirm-session-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .confirm-title {
+    font-size: 14px;
+    color: #0f172a;
+  }
+  .confirm-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #64748b;
+  }
+  .confirm-dot {
+    color: #cbd5e1;
+  }
+  .confirm-sub-text {
+    font-size: 12.5px;
+    color: #64748b;
+    margin: 0;
+    line-height: 1.5;
+  }
+  .confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 24px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
   }
 
   @media (max-width: 768px) {

@@ -579,48 +579,42 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
 /* ── Scan Identity Bar ───────────────────────────────────────────────────── */
 .scan-student-bar {
   width: 100%; max-width: 360px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-md);
-  padding: 8px 12px;
+  padding: 8px 14px;
   margin-top: 10px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: center;
 }
-.scan-student-info { display: flex; flex-direction: column; gap: 2px; }
-.scan-student-sub { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
-.scan-student-info strong { font-size: 13.5px; color: #f8fafc; font-family: monospace; }
-.scan-status-indicator {
-  display: inline-flex;
+.scan-student-horizontal {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 600;
-  background: rgba(13, 148, 136, 0.18);
-  color: #2dd4bf;
-  border: 1px solid rgba(45, 212, 191, 0.35);
+  gap: 8px;
+  flex-wrap: nowrap;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.scan-status-indicator.verifying {
-  background: rgba(217, 119, 6, 0.18);
-  color: #fbbf24;
-  border-color: rgba(251, 191, 36, 0.35);
+.scan-student-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  flex-shrink: 0;
 }
-.scan-status-indicator.unverified {
-  background: rgba(220, 38, 38, 0.18);
-  color: #f87171;
-  border-color: rgba(248, 113, 113, 0.35);
+.scan-student-display {
+  font-size: 13.5px;
+  color: #38bdf8;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.scan-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
+
 
 /* ── Live Validation HUD ─────────────────────────────────────────────────── */
 .scan-validation-hud {
@@ -809,12 +803,9 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
   border: 1px solid var(--ink-200);
   background: var(--paper);
   color: var(--ink-700);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.server-status-pill:hover {
-  border-color: var(--teal-500);
-  background: var(--teal-50);
+  cursor: default;
+  pointer-events: none;
+  user-select: none;
 }
 .server-status-dot {
   width: 7px;

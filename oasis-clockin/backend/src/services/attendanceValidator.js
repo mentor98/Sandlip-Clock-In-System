@@ -415,23 +415,26 @@ async function validateAttendance(params) {
   details.targetWifiIp = requiredWifiIp;
   details.ipMatch = effectiveIpMatch;
 
+  const wifiSsidName = org?.wifi_ssid || 'The Oasis';
+
   if (effectiveIpMatch) {
     checks.approvedNetwork = true;
     checks.ipSubnetMatch = true;
     checks.wifiIpMatch = true;
-    details.networkNote = `Connected via authorized campus network (IPv4: ${clientIp}, Host: ${requiredWifiIp})`;
+    details.networkNote = `Connected via "${wifiSsidName}" authorized campus network (IPv4: ${clientIp}, Host: ${requiredWifiIp})`;
   } else {
     checks.approvedNetwork = false;
     checks.wifiIpMatch = false;
-    details.networkNote = `IP ${clientIp} does not match the designated WiFi network (${requiredWifiIp}).`;
+    details.networkNote = `IP ${clientIp} does not match the designated "${wifiSsidName}" WiFi network (${requiredWifiIp}).`;
     securityAnomalies.push({ type: 'NETWORK_MISMATCH', severity: 'MEDIUM', clientIp, requiredWifiIp });
 
     if (org?.ip_check_mode === 'strict') {
-      criticalFailures.push(`You must be connected via the designated campus WiFi (IPv4: ${requiredWifiIp}, MAC: ${requiredWifiMac}).`);
+      criticalFailures.push(`You must be connected via "${wifiSsidName}" campus WiFi (IPv4: ${requiredWifiIp}, MAC: ${requiredWifiMac}).`);
     }
   }
 
   details.wifiVerification = {
+    ssid: wifiSsidName,
     requiredMac: requiredWifiMac,
     requiredIp: requiredWifiIp,
     clientMac: deviceMac || device?.mac_address || requiredWifiMac,

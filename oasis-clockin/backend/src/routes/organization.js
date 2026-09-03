@@ -30,7 +30,7 @@ router.get('/', async (_req, res) => {
     early_threshold_minutes: 15,
     wifi_mac: 'be:64:b4:14:4d:67',
     wifi_ip: '192.168.1.156',
-    wifi_ssid: 'Sandlip-Oasis-WiFi',
+    wifi_ssid: 'The Oasis',
     status: 'active',
   };
 
@@ -80,7 +80,7 @@ router.put('/', async (req, res) => {
     early_threshold_minutes: early_threshold_minutes != null ? parseInt(early_threshold_minutes, 10) : 15,
     wifi_mac: wifi_mac || 'be:64:b4:14:4d:67',
     wifi_ip: wifi_ip || '192.168.1.156',
-    wifi_ssid: wifi_ssid || 'Sandlip-Oasis-WiFi',
+    wifi_ssid: wifi_ssid || 'The Oasis',
     status: status || 'active',
     updated_at: new Date().toISOString(),
   };

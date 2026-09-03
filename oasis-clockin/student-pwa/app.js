@@ -1,26 +1,6 @@
 // ====== Oasis ClockIn Student PWA Client ======
 function getApiBase() {
-  if (window.OASIS_API_BASE && String(window.OASIS_API_BASE).trim()) {
-    return String(window.OASIS_API_BASE).trim().replace(/\/+$/, '');
-  }
-  const stored = localStorage.getItem('oasis_api_base');
-  if (stored && stored.trim()) {
-    const val = stored.trim().replace(/\/+$/, '');
-    // Sanitize: check for invalid, dummy, placeholder, or unresolvable domains
-    if (
-      val.includes('your-server') ||
-      val.includes('example.com') ||
-      val.includes('localhost:4000') ||
-      val.includes('oasis-clockin-backend') ||
-      val.includes('dummy') ||
-      val.includes('undefined') ||
-      val.includes('null')
-    ) {
-      try { localStorage.removeItem('oasis_api_base'); } catch (_) {}
-      return '/api';
-    }
-    return val;
-  }
+  try { localStorage.removeItem('oasis_api_base'); } catch (_) {}
   return '/api';
 }
 
@@ -841,11 +821,12 @@ function applyClockButtonState() {
         icon.innerHTML = `<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>`;
       }
     } else {
-      btn.disabled = false;
-      btn.className = 'btn-primary btn-clocked-in';
-      text.textContent = '✓ Attendance Taken (Opens at 5:00 PM)';
-      btn.style.opacity = '1';
-      btn.style.cursor = 'pointer';
+      // Disabled until 5:00 PM per school policy
+      btn.disabled = true;
+      btn.className = 'btn-primary btn-clocked-in btn-disabled';
+      text.textContent = 'Clocked In · Opens at 5:00 PM to Clock Out';
+      btn.style.opacity = '0.65';
+      btn.style.cursor = 'not-allowed';
       if (icon) {
         icon.innerHTML = `<polyline points="20 6 9 17 4 12"/>`;
       }
@@ -1118,9 +1099,7 @@ document.getElementById('btn-apply-token').onclick = () => {
 
 // Scanner Identity Controls — Verified directly with backend database & admin
 async function setupScannerIdentityControls() {
-  const displayEl = document.getElementById('scan-student-name');
-  const statusEl = document.getElementById('scan-student-status');
-  const statusText = document.getElementById('scan-status-text');
+  const displayEl = document.getElementById('scan-student-display') || document.getElementById('scan-student-name');
 
   // Determine active student ID from signin form or persistent state
   const signinInput = document.getElementById('student-id');
@@ -1133,15 +1112,11 @@ async function setupScannerIdentityControls() {
   const initialName = localStorage.getItem('oasis_student_name') || (known ? known.full_name : null);
 
   if (displayEl) {
-    displayEl.textContent = initialName ? `${activeId} (${initialName})` : activeId;
-  }
-  if (statusEl) {
-    statusEl.className = 'scan-status-indicator verified';
-    if (statusText) statusText.textContent = initialName ? 'Database Verified' : 'Checking DB…';
+    displayEl.textContent = initialName ? `${activeId} · ${initialName}` : activeId;
   }
 
   try {
-    const res = await api(`/auth/verify-student?id=${encodeURIComponent(activeId)}`, { auth: false, timeoutMs: 2500 });
+    const res = await api(`/auth/verify-student?id=${encodeURIComponent(activeId)}`, { auth: false, timeoutMs: 3000 });
     if (res && res.exists && res.student) {
       state.studentId = res.student.student_id;
       state.studentName = res.student.full_name;
@@ -1149,30 +1124,15 @@ async function setupScannerIdentityControls() {
       localStorage.setItem('oasis_student_name', res.student.full_name);
 
       if (displayEl) {
-        displayEl.textContent = `${res.student.student_id} (${res.student.full_name})`;
-      }
-      if (statusEl) {
-        statusEl.className = 'scan-status-indicator verified';
-        if (statusText) statusText.textContent = 'Database Verified';
+        displayEl.textContent = `${res.student.student_id} · ${res.student.full_name}`;
       }
       return;
     }
   } catch (err) {
     console.warn('Student verification lookup notice:', err.message);
-    // If offline or DNS error, but we have student info or known ID, keep verified
-    if (initialName || known) {
-      if (statusEl) {
-        statusEl.className = 'scan-status-indicator verified';
-        if (statusText) statusText.textContent = 'Identity Verified (Local)';
-      }
-      return;
+    if (initialName && displayEl) {
+      displayEl.textContent = `${activeId} · ${initialName}`;
     }
-  }
-
-  // If lookup returned not found
-  if (statusEl) {
-    statusEl.className = 'scan-status-indicator unverified';
-    if (statusText) statusText.textContent = 'Not Found in DB';
   }
 }
 
@@ -1853,11 +1813,11 @@ async function processQrImageFile(file, statusEl) {
   }
 }
 
-// ====== Server Connection Modal & Status Indicator ======
+// ====== Server Connectivity Status Indicator ======
 async function updateServerStatusPill() {
   const frontLabel = document.getElementById('server-status-label');
   const frontDot = document.getElementById('front-server-dot');
-  const homeLabel = document.getElementById('server-status-label-home');
+  const homeLabel = document.getElementById('home-server-label');
   const homeDot = document.getElementById('home-server-dot');
 
   let queue = [];
@@ -1865,15 +1825,13 @@ async function updateServerStatusPill() {
     queue = JSON.parse(localStorage.getItem('oasis_offline_queue') || '[]');
   } catch (_) {}
 
-  const currentEndpoint = getApiBase();
-
-  // Test server connectivity lightly
+  // Check health endpoint
   let isOnline = false;
   try {
-    const res = await fetch(`${currentEndpoint}/auth/verify-student?id=SAN-2026-014`, {
+    const res = await fetch('/api/health', {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(2500),
     });
     isOnline = res.ok;
   } catch (_) {
@@ -1882,7 +1840,7 @@ async function updateServerStatusPill() {
 
   const labelText = queue.length > 0
     ? `Syncing (${queue.length})`
-    : (isOnline ? 'Online' : 'Local / Offline');
+    : (isOnline ? 'Online' : 'Local Mode');
 
   const dotClass = queue.length > 0
     ? 'server-status-dot offline'
@@ -1894,112 +1852,8 @@ async function updateServerStatusPill() {
   if (homeDot) homeDot.className = dotClass;
 }
 
-function openServerModal() {
-  const modal = document.getElementById('server-modal');
-  const input = document.getElementById('server-url-input');
-  const details = document.getElementById('modal-server-details');
-  const alertBox = document.getElementById('server-test-alert');
-
-  if (input) input.value = localStorage.getItem('oasis_api_base') || getApiBase();
-  if (details) details.textContent = `Active endpoint: ${getApiBase()}`;
-  if (alertBox) {
-    alertBox.style.display = 'none';
-    alertBox.className = 'alert-box';
-  }
-  if (modal) modal.style.display = 'flex';
-  testServerConnection();
-}
-
-function closeServerModal() {
-  const modal = document.getElementById('server-modal');
-  if (modal) modal.style.display = 'none';
-}
-
-async function testServerConnection() {
-  const input = document.getElementById('server-url-input');
-  const dot = document.getElementById('modal-server-dot');
-  const text = document.getElementById('modal-server-status-text');
-  const details = document.getElementById('modal-server-details');
-  const alertBox = document.getElementById('server-test-alert');
-
-  let testUrl = (input && input.value.trim()) || getApiBase();
-  testUrl = testUrl.replace(/\/+$/, '');
-
-  if (dot) dot.className = 'server-status-dot offline';
-  if (text) text.textContent = 'Testing connection…';
-  if (alertBox) alertBox.style.display = 'none';
-
-  try {
-    const pingStart = Date.now();
-    const res = await fetch(`${testUrl}/auth/verify-student?id=SAN-2026-014`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(3000),
-    });
-    const roundTrip = Date.now() - pingStart;
-
-    if (res.ok) {
-      if (dot) dot.className = 'server-status-dot online';
-      if (text) text.textContent = `Connected successfully (${roundTrip}ms)`;
-      if (details) details.textContent = `Backend online at ${testUrl}`;
-      if (alertBox) {
-        alertBox.className = 'alert-box alert-success';
-        alertBox.textContent = `✅ Server responded in ${roundTrip}ms. Student attendance will sync directly to the cloud.`;
-        alertBox.style.display = 'block';
-      }
-      return true;
-    } else {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`);
-    }
-  } catch (err) {
-    if (dot) dot.className = 'server-status-dot error';
-    if (text) text.textContent = 'Connection failed';
-    if (details) details.textContent = `Unable to reach ${testUrl}`;
-    if (alertBox) {
-      alertBox.className = 'alert-box alert-warning';
-      alertBox.innerHTML = `⚠️ Cannot reach <strong>${testUrl}</strong> (${err.message}).<br/>Attendance will be verified locally on this device with zero downtime, and will sync once connection is restored.`;
-      alertBox.style.display = 'block';
-    }
-    return false;
-  }
-}
-
-// Bind server modal triggers
-const btnServerPill = document.getElementById('btn-server-status');
-if (btnServerPill) btnServerPill.onclick = () => openServerModal();
-
-const btnServerPillHome = document.getElementById('btn-server-status-home');
-if (btnServerPillHome) btnServerPillHome.onclick = () => openServerModal();
-
-const btnCloseServer = document.getElementById('btn-close-server-modal');
-if (btnCloseServer) btnCloseServer.onclick = () => closeServerModal();
-
-const btnTestServer = document.getElementById('btn-test-server');
-if (btnTestServer) btnTestServer.onclick = () => testServerConnection();
-
-const btnSaveServer = document.getElementById('btn-save-server');
-if (btnSaveServer) {
-  btnSaveServer.onclick = async () => {
-    const input = document.getElementById('server-url-input');
-    const val = (input && input.value.trim()) || '/api';
-    localStorage.setItem('oasis_api_base', val);
-    await testServerConnection();
-    updateServerStatusPill();
-    flushOfflineAttendanceQueue();
-    setTimeout(() => closeServerModal(), 1200);
-  };
-}
-
-const btnResetServer = document.getElementById('btn-reset-server');
-if (btnResetServer) {
-  btnResetServer.onclick = () => {
-    localStorage.removeItem('oasis_api_base');
-    const input = document.getElementById('server-url-input');
-    if (input) input.value = '/api';
-    testServerConnection();
-    updateServerStatusPill();
-  };
-}
+// Periodically check server connectivity every 30s
+setInterval(updateServerStatusPill, 30000);
 
 // ====== Boot Sequence ======
 (async function boot() {

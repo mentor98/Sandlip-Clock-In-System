@@ -7,42 +7,67 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   realtime: { params: { eventsPerSecond: 10 } },
 });
 
+// Singleton shared Server-Sent Events stream
+let sharedEventSource = null;
+let sseListeners = new Set();
+
+function getSharedEventSource() {
+  if (typeof window === 'undefined' || !window.EventSource) return null;
+  const token = localStorage.getItem('oasis_admin_session') || localStorage.getItem('oasis_admin_token') || '';
+  if (!token) return null;
+
+  if (!sharedEventSource || sharedEventSource.readyState === EventSource.CLOSED) {
+    try {
+      sharedEventSource = new EventSource(`/api/admin/stream?token=${encodeURIComponent(token)}`);
+
+      sharedEventSource.addEventListener('realtime', (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          sseListeners.forEach((listener) => {
+            try { listener(parsed); } catch (_) {}
+          });
+        } catch (_) {}
+      });
+
+      sharedEventSource.addEventListener('attendance', (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          sseListeners.forEach((listener) => {
+            try {
+              listener({ eventType: 'INSERT', table: 'attendance', record: parsed });
+            } catch (_) {}
+          });
+        } catch (_) {}
+      });
+
+      sharedEventSource.onerror = () => {
+        // Browser will auto-reconnect SSE with backoff
+      };
+    } catch (err) {
+      console.warn('SSE stream init warning:', err);
+    }
+  }
+  return sharedEventSource;
+}
+
 /**
  * Subscribe to INSERT / UPDATE / DELETE events on a table.
- * Combines native SSE stream from Express backend with Supabase channels and heartbeat.
+ * Combines native SSE stream from Express backend with Supabase channels.
  * Returns an unsubscribe function — call it in onDestroy.
  */
 export function subscribeTable(table, event = '*', callback) {
   let channel = null;
-  let eventSource = null;
 
-  // 1. Direct Server-Sent Events stream from backend for instant zero-latency updates
-  try {
-    const token = localStorage.getItem('oasis_admin_session') || localStorage.getItem('oasis_admin_token') || '';
-    if (token && typeof window !== 'undefined' && window.EventSource) {
-      eventSource = new EventSource(`/api/admin/stream?token=${encodeURIComponent(token)}`);
-      
-      eventSource.addEventListener('realtime', (e) => {
-        try {
-          const parsed = JSON.parse(e.data);
-          if (parsed && (!table || table === '*' || parsed.table === table)) {
-            callback(parsed);
-          }
-        } catch (_) {}
-      });
-
-      eventSource.addEventListener('attendance', (e) => {
-        try {
-          const parsed = JSON.parse(e.data);
-          if (table === 'attendance' || table === '*' || !table) {
-            callback({ eventType: 'INSERT', table: 'attendance', record: parsed });
-          }
-        } catch (_) {}
-      });
+  // 1. Shared SSE listener
+  const sseHandler = (payload) => {
+    if (!payload) return;
+    if (!table || table === '*' || payload.table === table) {
+      callback(payload);
     }
-  } catch (e) {
-    console.warn('Admin stream setup note:', e.message);
-  }
+  };
+
+  sseListeners.add(sseHandler);
+  getSharedEventSource();
 
   // 2. Supabase postgres_changes channel
   try {
@@ -56,20 +81,25 @@ export function subscribeTable(table, event = '*', callback) {
     console.warn('Realtime channel error:', e);
   }
 
-  // 3. Resilient heartbeat sync ensuring any external modification is reflected
+  // 3. Gentle periodic sync (every 30 seconds) to ensure long-term consistency without flooding
   const interval = setInterval(() => {
     try {
-      callback({ eventType: 'SYNC', table });
+      if (document.visibilityState === 'visible') {
+        callback({ eventType: 'SYNC', table });
+      }
     } catch {}
-  }, 4000);
+  }, 30000);
 
   return () => {
     if (interval) clearInterval(interval);
-    if (eventSource) {
-      try { eventSource.close(); } catch {}
+    sseListeners.delete(sseHandler);
+    if (sseListeners.size === 0 && sharedEventSource) {
+      try { sharedEventSource.close(); } catch {}
+      sharedEventSource = null;
     }
     if (channel) {
       try { supabase.removeChannel(channel); } catch {}
     }
   };
 }
+

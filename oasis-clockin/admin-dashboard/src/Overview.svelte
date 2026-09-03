@@ -9,6 +9,14 @@
   let activeSession = null;
   let error = '';
 
+  let loadTimer = null;
+  function debouncedLoad() {
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(() => {
+      load();
+    }, 300);
+  }
+
   async function load() {
     try {
       const [studentsRes, devicesRes, attendanceRes, sessionRes] = await Promise.all([
@@ -26,23 +34,29 @@
       const todayRecords = (attendanceRes.attendance || []).filter(r => r.recorded_at?.startsWith(today));
       stats.presentToday = new Set(todayRecords.filter(r => r.type === 'clock_in').map(r => r.student_id)).size;
 
-      const auditRes = await api('/admin/audit-log');
+      const auditRes = await api('/admin/audit-log').catch(() => ({ audit_log: [] }));
       const todayAudit = (auditRes.audit_log || []).filter(e => e.created_at?.startsWith(today));
       stats.rejectedToday = todayAudit.filter(e => e.event_type === 'attendance_rejected' && e.detail?.status === 'REJECTED').length;
       stats.reviewToday = todayAudit.filter(e => e.event_type === 'attendance_rejected' && e.detail?.status === 'REVIEW').length;
 
       recentAttendance = todayRecords.slice(0, 10);
 
-      const activeSessions = (sessionRes.sessions || []).filter(s => s.status === 'ACTIVE');
+      const activeSessions = (sessionRes.sessions || [])
+        .filter(s => s.status === 'ACTIVE')
+        .sort((a, b) => new Date(b.started_at || b.created_at) - new Date(a.started_at || a.created_at));
       activeSession = activeSessions[0] || null;
     } catch (e) { error = e.message; }
   }
 
   load();
-  const unsub1 = subscribeTable('attendance', '*', load);
-  const unsub2 = subscribeTable('devices', '*', load);
-  const unsub3 = subscribeTable('students', '*', load);
-  onDestroy(() => { unsub1(); unsub2(); unsub3(); });
+  const unsub1 = subscribeTable('attendance', '*', debouncedLoad);
+  const unsub2 = subscribeTable('devices', '*', debouncedLoad);
+  const unsub3 = subscribeTable('students', '*', debouncedLoad);
+  const unsub4 = subscribeTable('sessions', '*', debouncedLoad);
+  onDestroy(() => {
+    clearTimeout(loadTimer);
+    unsub1(); unsub2(); unsub3(); unsub4();
+  });
 
   function statusColor(s) {
     if (s === 'VERIFIED') return '#0f766e';

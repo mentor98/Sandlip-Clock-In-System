@@ -28,10 +28,10 @@
               <span class="brand-sub">Student Attendance Portal</span>
             </div>
           </div>
-          <button id="btn-server-status" class="server-status-pill" type="button" title="Server Connection Settings">
+          <div id="front-server-pill" class="server-status-pill" title="Network Connection Status">
             <span class="server-status-dot online" id="front-server-dot"></span>
             <span id="server-status-label">Online</span>
-          </button>
+          </div>
         </div>
 
         <h2>Student Clock In</h2>
@@ -173,10 +173,10 @@
         </div>
 
         <div class="topbar-actions">
-          <button id="btn-server-status-home" class="server-status-pill" type="button" title="Server Connection Settings">
+          <div id="home-server-pill" class="server-status-pill" title="Network Connection Status">
             <span class="server-status-dot online" id="home-server-dot"></span>
-            <span id="server-status-label-home">Online</span>
-          </button>
+            <span id="home-server-label">Online</span>
+          </div>
           <button id="btn-scan" class="icon-btn" title="Scan QR Code">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             <span>Scan QR</span>
@@ -269,15 +269,11 @@
         <span class="brand-title small" style="color:white">Scan Classroom QR</span>
       </div>
 
-      <!-- Active Student Badge in Scanner -->
+      <!-- Active Student Bar in Scanner (Horizontal Student ID & Name) -->
       <div class="scan-student-bar">
-        <div class="scan-student-info">
+        <div class="scan-student-horizontal">
           <span class="scan-student-sub">Attending as:</span>
-          <strong id="scan-student-name">SAN-2026-014</strong>
-        </div>
-        <div id="scan-student-status" class="scan-status-indicator verified" title="Realtime Database Verification">
-          <span class="scan-dot"></span>
-          <span id="scan-status-text">Database Verified</span>
+          <strong id="scan-student-display" class="scan-student-display">SAN-2026-014</strong>
         </div>
       </div>
       
@@ -316,8 +312,8 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             </div>
             <div class="hud-step-body">
-              <span class="hud-step-title">Connected Network &amp; IP</span>
-              <span class="hud-step-desc" id="hud-desc-network">Comparing IP &amp; subnet against classroom</span>
+              <span class="hud-step-title">Campus Wi-Fi ("The Oasis")</span>
+              <span class="hud-step-desc" id="hud-desc-network">Verifying "The Oasis" network (192.168.1.156)</span>
             </div>
             <span class="hud-badge wait" id="hud-badge-network">CHECKING…</span>
           </div>
@@ -328,7 +324,7 @@
             </div>
             <div class="hud-step-body">
               <span class="hud-step-title">Hardware MAC Address</span>
-              <span class="hud-step-desc" id="hud-desc-mac">Validating registered device hardware binding</span>
+              <span class="hud-step-desc" id="hud-desc-mac">Validating hardware MAC (be:64:b4:14:4d:67)</span>
             </div>
             <span class="hud-badge wait" id="hud-badge-mac">CHECKING…</span>
           </div>
@@ -381,42 +377,6 @@
       </div>
     </section>
   </main>
-
-  <!-- ══ SERVER CONNECTION SETTINGS MODAL ═══════════════════════════════════ -->
-  <div id="server-modal" class="modal-backdrop" style="display: none;">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3>Backend Server Connection</h3>
-        <button id="btn-close-server-modal" class="btn-text" type="button" style="font-size: 16px; cursor: pointer;">✕</button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-desc">Configure where the Student PWA connects to verify attendance and sync records.</p>
-        <div class="server-status-card">
-          <div class="server-status-indicator-row">
-            <span id="modal-server-dot" class="server-status-dot online"></span>
-            <strong id="modal-server-status-text">Testing backend connection…</strong>
-          </div>
-          <div class="server-status-sub" id="modal-server-details">Active endpoint: /api</div>
-        </div>
-
-        <label for="server-url-input">API Endpoint URL</label>
-        <div class="input-wrap">
-          <input id="server-url-input" type="text" placeholder="/api" />
-        </div>
-        <p class="field-hint">Default is <code>/api</code> (connected to this application server).</p>
-
-        <div id="server-test-alert" class="alert-box" style="display: none; margin-top: 10px;"></div>
-
-        <div class="modal-actions-row">
-          <button id="btn-test-server" class="btn-secondary" type="button">Test Connection</button>
-          <button id="btn-save-server" class="btn-primary" type="button">Save &amp; Apply</button>
-        </div>
-        <div style="margin-top: 10px; text-align: center;">
-          <button id="btn-reset-server" class="btn-link" type="button" style="background:none; border:none; color:var(--teal-700); text-decoration:underline; font-size:12px; cursor:pointer;">Reset to Default (/api)</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- ══ ATTENDANCE SUCCESSFUL "MARK GOOD" MODAL ═════════════════════════════ -->
   <div id="modal-attendance-success" class="modal-backdrop" style="display: none;">

@@ -162,7 +162,7 @@ const tables = {
       early_threshold_minutes: 15,
       wifi_mac: 'be:64:b4:14:4d:67',
       wifi_ip: '192.168.1.156',
-      wifi_ssid: 'Sandlip-Oasis-WiFi',
+      wifi_ssid: 'The Oasis',
       require_ip_match: true,
       require_wifi_match: true,
       require_gps: true,
@@ -177,7 +177,7 @@ const tables = {
     {
       id: 'net-00000000-0000-0000-0000-000000000001',
       cidr: '192.168.1.156/32',
-      label: 'Sandlip Oasis WiFi Host (IP: 192.168.1.156, MAC: BE:64:B4:14:4D:67)',
+      label: 'The Oasis WiFi Host (IP: 192.168.1.156, MAC: BE:64:B4:14:4D:67)',
       mac_address: 'be:64:b4:14:4d:67',
       created_by: defaultAdminId,
       created_at: new Date().toISOString(),
@@ -185,7 +185,7 @@ const tables = {
     {
       id: 'net-00000000-0000-0000-0000-000000000002',
       cidr: '192.168.1.0/24',
-      label: 'Sandlip Oasis Campus Subnet (192.168.1.0/24, AP MAC: BE:64:B4:14:4D:67)',
+      label: 'The Oasis Campus Subnet (192.168.1.0/24, AP MAC: BE:64:B4:14:4D:67)',
       mac_address: 'be:64:b4:14:4d:67',
       created_by: defaultAdminId,
       created_at: new Date().toISOString(),

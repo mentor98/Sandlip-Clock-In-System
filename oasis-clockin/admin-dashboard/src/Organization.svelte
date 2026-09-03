@@ -27,7 +27,7 @@
   let earlyThresholdMinutes = 15;
   let wifiMac = 'be:64:b4:14:4d:67';
   let wifiIp = '192.168.1.156';
-  let wifiSsid = 'Sandlip-Oasis-WiFi';
+  let wifiSsid = 'The Oasis';
 
   let mapElement;
   let map = null;
@@ -118,7 +118,7 @@
         earlyThresholdMinutes = config.early_threshold_minutes != null ? config.early_threshold_minutes : 15;
         wifiMac = config.wifi_mac || 'be:64:b4:14:4d:67';
         wifiIp = config.wifi_ip || '192.168.1.156';
-        wifiSsid = config.wifi_ssid || 'Oasis-Campus-WiFi';
+        wifiSsid = config.wifi_ssid || 'The Oasis';
 
         if (map) {
           updateMapPosition(latitude, longitude, attendanceRadius);

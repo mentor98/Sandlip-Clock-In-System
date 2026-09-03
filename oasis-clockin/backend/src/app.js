@@ -32,6 +32,15 @@ try {
   console.warn('Scheduled jobs init note:', e.message);
 }
 
+app.get('/api', (_req, res) => res.json({
+  ok: true,
+  name: 'Oasis ClockIn API',
+  wifi_ssid: 'The Oasis',
+  wifi_mac: 'be:64:b4:14:4d:67',
+  wifi_ip: '192.168.1.156',
+  timestamp: new Date().toISOString()
+}));
+
 app.get('/api/health', (_req, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));
 
 // Debug endpoint for student inspection
