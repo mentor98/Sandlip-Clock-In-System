@@ -363,7 +363,7 @@
         </div>
         <div class="field">
           <label for="wifi-ssid">Campus WiFi SSID</label>
-          <input id="wifi-ssid" bind:value={wifiSsid} placeholder="Oasis-Campus-WiFi" />
+          <input id="wifi-ssid" bind:value={wifiSsid} placeholder="The Oasis" />
         </div>
       </div>
 

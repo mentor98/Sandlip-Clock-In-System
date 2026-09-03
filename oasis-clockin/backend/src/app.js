@@ -32,7 +32,7 @@ try {
   console.warn('Scheduled jobs init note:', e.message);
 }
 
-app.get('/api', (_req, res) => res.json({
+app.all(['/api', '/api/'], (_req, res) => res.json({
   ok: true,
   name: 'Oasis ClockIn API',
   wifi_ssid: 'The Oasis',
@@ -41,7 +41,13 @@ app.get('/api', (_req, res) => res.json({
   timestamp: new Date().toISOString()
 }));
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));
+app.all('/api/health', (_req, res) => res.json({
+  ok: true,
+  wifi_ssid: 'The Oasis',
+  wifi_mac: 'be:64:b4:14:4d:67',
+  wifi_ip: '192.168.1.156',
+  timestamp: new Date().toISOString()
+}));
 
 // Debug endpoint for student inspection
 app.get('/api/debug/student/:student_id', async (req, res) => {
