@@ -1,11 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://gqwdibokfrzekmiwsska.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxd2RpYm9rZnJ6ZWttaXdzc2thIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyNTc0NTYsImV4cCI6MjEwMzgzMzQ1Nn0.RB6Gb8ibxYJQ7fTZKayF3X7WeBzER0o1rgpIBL_FJfo';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  realtime: { params: { eventsPerSecond: 10 } },
-});
+export const supabase =
+  SUPABASE_URL && SUPABASE_ANON_KEY && !SUPABASE_URL.includes('your-')
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        realtime: { params: { eventsPerSecond: 10 } },
+      })
+    : null;
 
 // Singleton shared Server-Sent Events stream
 let sharedEventSource = null;
@@ -70,15 +73,17 @@ export function subscribeTable(table, event = '*', callback) {
   getSharedEventSource();
 
   // 2. Supabase postgres_changes channel
-  try {
-    channel = supabase
-      .channel(`rt_${table}_${event}_${Math.random().toString(36).slice(2, 9)}`)
-      .on('postgres_changes', { event, schema: 'public', table }, (payload) => {
-        try { callback(payload); } catch {}
-      })
-      .subscribe();
-  } catch (e) {
-    console.warn('Realtime channel error:', e);
+  if (supabase) {
+    try {
+      channel = supabase
+        .channel(`rt_${table}_${event}_${Math.random().toString(36).slice(2, 9)}`)
+        .on('postgres_changes', { event, schema: 'public', table }, (payload) => {
+          try { callback(payload); } catch {}
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn('Realtime channel error:', e);
+    }
   }
 
   // 3. Gentle periodic sync (every 30 seconds) to ensure long-term consistency without flooding
@@ -97,7 +102,7 @@ export function subscribeTable(table, event = '*', callback) {
       try { sharedEventSource.close(); } catch {}
       sharedEventSource = null;
     }
-    if (channel) {
+    if (channel && supabase) {
       try { supabase.removeChannel(channel); } catch {}
     }
   };
