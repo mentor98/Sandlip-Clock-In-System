@@ -243,8 +243,13 @@ router.post('/locations/:id/generate-qr', async (req, res) => {
     adminId: req.user?.sub,
     adminIp,
   });
-  const pwaBase = process.env.RP_ORIGIN_PWA || 'http://localhost:3000';
-  const deepLink = `${pwaBase}?location_id=${locationId}&token=${encodeURIComponent(token)}`;
+  const forwardedProto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+  const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host;
+  const detectedOrigin = forwardedHost ? `${forwardedProto}://${forwardedHost}` : null;
+  const pwaBase = process.env.RP_ORIGIN_PWA || detectedOrigin || '';
+  const deepLink = pwaBase
+    ? `${pwaBase}?location_id=${locationId}&token=${encodeURIComponent(token)}`
+    : `/?location_id=${locationId}&token=${encodeURIComponent(token)}`;
 
   // Generate QR image as base64 PNG
   const png = await bwipjs.toBuffer({

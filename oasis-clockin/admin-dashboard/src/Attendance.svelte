@@ -4,7 +4,7 @@
   import { subscribeTable } from './lib/realtime.js';
   import Icon from './lib/Icon.svelte';
 
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000/api';
+  const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
   let records = [];
   let locations = [];

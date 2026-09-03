@@ -19,13 +19,19 @@
     <section class="panel panel-center">
       <div class="form-wrap">
         <div class="brand-sub-header">
-          <div class="brand-icon small">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <div class="brand-header-left">
+            <div class="brand-icon small">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div>
+              <span class="brand-title small">Oasis ClockIn</span>
+              <span class="brand-sub">Student Attendance Portal</span>
+            </div>
           </div>
-          <div>
-            <span class="brand-title small">Oasis ClockIn</span>
-            <span class="brand-sub">Student Attendance Portal</span>
-          </div>
+          <button id="btn-server-status" class="server-status-pill" type="button" title="Server Connection Settings">
+            <span class="server-status-dot online" id="front-server-dot"></span>
+            <span id="server-status-label">Online</span>
+          </button>
         </div>
 
         <h2>Student Clock In</h2>
@@ -167,6 +173,10 @@
         </div>
 
         <div class="topbar-actions">
+          <button id="btn-server-status-home" class="server-status-pill" type="button" title="Server Connection Settings">
+            <span class="server-status-dot online" id="home-server-dot"></span>
+            <span id="server-status-label-home">Online</span>
+          </button>
           <button id="btn-scan" class="icon-btn" title="Scan QR Code">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             <span>Scan QR</span>
@@ -356,6 +366,42 @@
       </div>
     </section>
   </main>
+
+  <!-- ══ SERVER CONNECTION SETTINGS MODAL ═══════════════════════════════════ -->
+  <div id="server-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Backend Server Connection</h3>
+        <button id="btn-close-server-modal" class="btn-text" type="button" style="font-size: 16px; cursor: pointer;">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">Configure where the Student PWA connects to verify attendance and sync records.</p>
+        <div class="server-status-card">
+          <div class="server-status-indicator-row">
+            <span id="modal-server-dot" class="server-status-dot online"></span>
+            <strong id="modal-server-status-text">Testing backend connection…</strong>
+          </div>
+          <div class="server-status-sub" id="modal-server-details">Active endpoint: /api</div>
+        </div>
+
+        <label for="server-url-input">API Endpoint URL</label>
+        <div class="input-wrap">
+          <input id="server-url-input" type="text" placeholder="/api or https://your-server.run.app/api" />
+        </div>
+        <p class="field-hint">Default is <code>/api</code>. If your backend is hosted separately, enter the full URL (e.g. <code>https://...run.app/api</code>).</p>
+
+        <div id="server-test-alert" class="alert-box" style="display: none; margin-top: 10px;"></div>
+
+        <div class="modal-actions-row">
+          <button id="btn-test-server" class="btn-secondary" type="button">Test Connection</button>
+          <button id="btn-save-server" class="btn-primary" type="button">Save &amp; Apply</button>
+        </div>
+        <div style="margin-top: 10px; text-align: center;">
+          <button id="btn-reset-server" class="btn-link" type="button" style="background:none; border:none; color:var(--teal-700); text-decoration:underline; font-size:12px; cursor:pointer;">Reset to Default (/api)</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="app.js"></script>

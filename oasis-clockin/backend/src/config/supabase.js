@@ -29,9 +29,9 @@ const tables = {
   students: [
     {
       id: defaultStudent1Id,
-      full_name: 'Ada Lovelace',
+      full_name: 'Emmanuel Timothy',
       student_id: 'SAN-2026-014',
-      email: 'ada@oasis.edu',
+      email: 'emmanuel@oasis.edu',
       registered_ip: '192.168.1.156',
       registered_mac: 'BE:64:B4:14:4D:67',
       role: 'student',

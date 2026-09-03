@@ -153,8 +153,10 @@ async function generateSessionQrPayload(session, adminIp, adminId) {
     sessionId,
   });
 
-  const pwaBase = process.env.RP_ORIGIN_PWA || 'http://localhost:3000';
-  const deepLink = `${pwaBase}?location_id=${locationId}&session_id=${sessionId}&token=${encodeURIComponent(token)}`;
+  const pwaBase = process.env.RP_ORIGIN_PWA || '';
+  const deepLink = pwaBase
+    ? `${pwaBase}?location_id=${locationId}&session_id=${sessionId}&token=${encodeURIComponent(token)}`
+    : `/?location_id=${locationId}&session_id=${sessionId}&token=${encodeURIComponent(token)}`;
 
   const png = await bwipjs.toBuffer({
     bcid: 'qrcode',
