@@ -883,97 +883,66 @@ document.getElementById('btn-apply-token').onclick = () => {
   handleQrScanned(val);
 };
 
-const quickActiveQrBtn = document.getElementById('btn-quick-active-qr');
-if (quickActiveQrBtn) {
-  quickActiveQrBtn.onclick = async () => {
-    quickActiveQrBtn.disabled = true;
-    const oldText = quickActiveQrBtn.innerHTML;
-    quickActiveQrBtn.textContent = 'Connecting…';
-    try {
-      // Find active session
-      const activeRes = await api('/sessions/active', { auth: false }).catch(() => ({}));
-      const sess = activeRes.session;
-      if (!sess) {
-        alert('No active classroom session currently running. Please ask the instructor to start an attendance session.');
-        return;
+// Scanner Identity Controls — Verified directly with backend database & admin
+async function setupScannerIdentityControls() {
+  const displayEl = document.getElementById('scan-student-name');
+  const statusEl = document.getElementById('scan-student-status');
+  const statusText = document.getElementById('scan-status-text');
+
+  // Determine active student ID from signin form or persistent state
+  const signinInput = document.getElementById('student-id');
+  const activeId = (signinInput && signinInput.value.trim()) ||
+                   localStorage.getItem('oasis_student_id') ||
+                   state.studentId ||
+                   'SAN-2026-014';
+
+  if (displayEl) displayEl.textContent = activeId;
+  if (statusEl) {
+    statusEl.className = 'scan-status-indicator verifying';
+    if (statusText) statusText.textContent = 'Verifying…';
+  }
+
+  try {
+    const res = await api(`/auth/verify-student?id=${encodeURIComponent(activeId)}`, { auth: false });
+    if (res && res.exists && res.student) {
+      state.studentId = res.student.student_id;
+      state.studentName = res.student.full_name;
+      localStorage.setItem('oasis_student_id', res.student.student_id);
+      localStorage.setItem('oasis_student_name', res.student.full_name);
+
+      if (displayEl) {
+        displayEl.textContent = `${res.student.student_id} (${res.student.full_name})`;
       }
-      // Generate QR token payload for active session
-      const qrRes = await api(`/sessions/${sess.id}/generate-qr`, { method: 'POST', auth: false }).catch(() => ({}));
-      if (qrRes.scan_url) {
-        handleQrScanned(qrRes.scan_url);
-      } else if (qrRes.qr_token) {
-        handleQrScanned(qrRes.qr_token);
-      } else {
-        alert('Could not retrieve classroom QR code token. Please try again or point camera at screen.');
+      if (statusEl) {
+        statusEl.className = 'scan-status-indicator verified';
+        if (statusText) statusText.textContent = 'Database Verified';
       }
-    } catch (e) {
-      alert(e.message || 'Failed to connect to active classroom session.');
-    } finally {
-      quickActiveQrBtn.disabled = false;
-      quickActiveQrBtn.innerHTML = oldText;
+      return;
     }
-  };
+  } catch (err) {
+    console.warn('Student verification lookup note:', err.message);
+  }
+
+  // If lookup returned not found
+  if (statusEl) {
+    statusEl.className = 'scan-status-indicator unverified';
+    if (statusText) statusText.textContent = 'Not Found in DB';
+  }
 }
 
-// Scanner Identity Controls
-function setupScannerIdentityControls() {
-  const changeBtn = document.getElementById('btn-scan-change-student');
-  const pickerEl = document.getElementById('scan-student-picker');
-  const setBtn = document.getElementById('btn-scan-set-student');
-  const inputEl = document.getElementById('scan-student-input');
-  const displayEl = document.getElementById('scan-student-name');
-
-  function updateDisplay(id, name) {
-    const studentId = id || localStorage.getItem('oasis_student_id') || state.studentId || 'SAN-2026-014';
-    const studentName = name || localStorage.getItem('oasis_student_name') || state.studentName || 'Ada Lovelace';
-    state.studentId = studentId;
-    state.studentName = studentName;
-    localStorage.setItem('oasis_student_id', studentId);
-    if (studentName) localStorage.setItem('oasis_student_name', studentName);
-    if (displayEl) displayEl.textContent = `${studentId} (${studentName})`;
-    if (inputEl) inputEl.value = studentId;
-
-    const signinInput = document.getElementById('student-id');
-    if (signinInput && !signinInput.value.trim()) signinInput.value = studentId;
-  }
-
-  if (changeBtn && pickerEl) {
-    changeBtn.onclick = () => {
-      pickerEl.style.display = pickerEl.style.display === 'none' ? 'block' : 'none';
-      if (inputEl) inputEl.focus();
-    };
-  }
-
-  if (setBtn && inputEl) {
-    setBtn.onclick = () => {
-      const val = inputEl.value.trim();
-      if (val) {
-        let matchedName = 'Student';
-        if (/014/i.test(val)) matchedName = 'Ada Lovelace';
-        else if (/089/i.test(val)) matchedName = 'Charles Babbage';
-        else if (/015/i.test(val)) matchedName = 'Grace Hopper';
-        updateDisplay(val, matchedName);
-        if (pickerEl) pickerEl.style.display = 'none';
-      }
-    };
-  }
-
-  document.querySelectorAll('.scan-pill').forEach(pill => {
-    pill.onclick = () => {
-      const id = pill.getAttribute('data-id');
-      if (id) {
-        let matchedName = 'Student';
-        if (/014/i.test(id)) matchedName = 'Ada Lovelace';
-        else if (/089/i.test(id)) matchedName = 'Charles Babbage';
-        else if (/015/i.test(id)) matchedName = 'Grace Hopper';
-        updateDisplay(id, matchedName);
-        if (pickerEl) pickerEl.style.display = 'none';
-      }
-    };
+// Sync identity whenever student ID field is updated on sign-in
+const studentInputSync = document.getElementById('student-id');
+if (studentInputSync) {
+  studentInputSync.addEventListener('input', () => {
+    const val = studentInputSync.value.trim();
+    if (val) {
+      localStorage.setItem('oasis_student_id', val);
+      state.studentId = val;
+    }
   });
-
-  // Initial load
-  updateDisplay();
+  studentInputSync.addEventListener('change', () => {
+    setupScannerIdentityControls();
+  });
 }
 
 // Sound chirp on capture
@@ -1117,13 +1086,35 @@ async function handleQrScanned(data) {
   if (descQr) descQr.textContent = `Token: ${token.slice(0, 10)}… (Single-Use HMAC)`;
 
   // Resolve Student ID
-  const scanInput = document.getElementById('scan-student-input');
   const signinInput = document.getElementById('student-id');
-  const resolvedStudentId = (scanInput ? scanInput.value.trim() : '') ||
-                            (signinInput ? signinInput.value.trim() : '') ||
+  const resolvedStudentId = (signinInput ? signinInput.value.trim() : '') ||
                             localStorage.getItem('oasis_student_id') ||
                             state.studentId ||
                             'SAN-2026-014';
+
+  // Client-side single-use enforcement: check if student has already scanned this token or session
+  const targetSessionId = sessId || state.pendingQrSessionId || 'default-session';
+  const scanKey = `${resolvedStudentId}:${targetSessionId}:${token.slice(0, 32)}`;
+  let scannedKeys = [];
+  try {
+    scannedKeys = JSON.parse(localStorage.getItem('oasis_scanned_keys') || '[]');
+  } catch (_) {}
+
+  if (scannedKeys.includes(scanKey)) {
+    playScanChirp(false);
+    if (badgeQr) { badgeQr.className = 'hud-badge err'; badgeQr.textContent = 'REUSED'; }
+    if (iconQr) iconQr.className = 'hud-step-icon err';
+    if (titleEl) titleEl.textContent = 'Single Scan Enforced';
+    if (bannerEl) {
+      bannerEl.className = 'hud-banner failed';
+      bannerEl.textContent = 'You have already scanned this QR code and recorded attendance. Each student can only scan the QR code once.';
+    }
+    setTimeout(() => {
+      isScanningValidationActive = false;
+      startScanner();
+    }, 4500);
+    return;
+  }
 
   // Step 2 & 3: Display checking status
   if (badgeNet) { badgeNet.className = 'hud-badge wait'; badgeNet.textContent = 'CHECKING…'; }
@@ -1156,6 +1147,12 @@ async function handleQrScanned(data) {
 
     if (res.success || res.status === 'VERIFIED') {
       playScanChirp(true);
+
+      // Record scan in local single-use registry
+      scannedKeys.push(scanKey);
+      try {
+        localStorage.setItem('oasis_scanned_keys', JSON.stringify(scannedKeys));
+      } catch (_) {}
 
       // Step 2: Network & IP Passed
       if (badgeNet) { badgeNet.className = 'hud-badge ok'; badgeNet.textContent = 'VERIFIED'; }
@@ -1214,7 +1211,7 @@ async function handleQrScanned(data) {
       playScanChirp(false);
       const reasons = (res.details?.criticalFailures && res.details.criticalFailures.length > 0)
         ? res.details.criticalFailures.join('. ')
-        : (res.message || 'Validation failed.');
+        : (res.message || res.error || 'Validation failed.');
 
       if (res.checks?.approvedNetwork === false || res.checks?.ipSubnetMatch === false) {
         if (badgeNet) { badgeNet.className = 'hud-badge err'; badgeNet.textContent = 'MISMATCH'; }
@@ -1243,15 +1240,27 @@ async function handleQrScanned(data) {
   } catch (err) {
     playScanChirp(false);
     console.error('Validation error:', err);
-    if (titleEl) titleEl.textContent = 'Verification Error';
+    const isDuplicate = err.status === 409 || err.data?.alreadyScanned ||
+      (err.message && (err.message.toLowerCase().includes('already') || err.message.toLowerCase().includes('once')));
+
+    if (isDuplicate) {
+      if (badgeQr) { badgeQr.className = 'hud-badge err'; badgeQr.textContent = 'REUSED'; }
+      if (iconQr) iconQr.className = 'hud-step-icon err';
+      if (titleEl) titleEl.textContent = 'Single Scan Enforced';
+    } else {
+      if (titleEl) titleEl.textContent = 'Validation Rejected';
+    }
+
     if (bannerEl) {
       bannerEl.className = 'hud-banner failed';
-      bannerEl.textContent = err.message || 'Network error during validation. Retrying…';
+      bannerEl.textContent = (err.data && (err.data.error || (err.data.criticalFailures && err.data.criticalFailures[0]))) ||
+        err.message || 'Validation rejected.';
     }
+
     setTimeout(() => {
       isScanningValidationActive = false;
       startScanner();
-    }, 3000);
+    }, isDuplicate ? 4500 : 3500);
   }
 }
 

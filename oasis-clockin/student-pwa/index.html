@@ -263,22 +263,11 @@
       <div class="scan-student-bar">
         <div class="scan-student-info">
           <span class="scan-student-sub">Attending as:</span>
-          <strong id="scan-student-name">SAN-2026-014 (Ada Lovelace)</strong>
+          <strong id="scan-student-name">SAN-2026-014</strong>
         </div>
-        <button id="btn-scan-change-student" class="scan-btn-link" type="button">Change ID</button>
-      </div>
-
-      <!-- Quick Student Switcher Popup / Input -->
-      <div id="scan-student-picker" class="scan-student-picker" style="display: none;">
-        <label for="scan-student-input">Student / Matric ID:</label>
-        <div style="display: flex; gap: 6px; margin-top: 4px;">
-          <input id="scan-student-input" placeholder="e.g. SAN-2026-014" value="SAN-2026-014" />
-          <button id="btn-scan-set-student" class="btn-primary" style="padding: 6px 14px; font-size: 13px;" type="button">Set</button>
-        </div>
-        <div class="scan-quick-pills">
-          <button type="button" class="scan-pill" data-id="SAN-2026-014">Ada (014)</button>
-          <button type="button" class="scan-pill" data-id="SAN-2026-089">Charles (089)</button>
-          <button type="button" class="scan-pill" data-id="SAN-2026-015">Grace (015)</button>
+        <div id="scan-student-status" class="scan-status-indicator verified" title="Realtime Database Verification">
+          <span class="scan-dot"></span>
+          <span id="scan-status-text">Database Verified</span>
         </div>
       </div>
       
@@ -358,14 +347,10 @@
       <!-- Manual deep-link / token fallback -->
       <div class="manual-token-wrap">
         <input id="manual-token-input" placeholder="Or paste QR link / token here" />
-        <div style="display: flex; gap: 8px; margin-top: 8px;">
-          <button id="btn-apply-token" class="btn-primary" style="flex: 1;">
+        <div style="margin-top: 8px;">
+          <button id="btn-apply-token" class="btn-primary" style="width: 100%;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             <span>Apply Code</span>
-          </button>
-          <button id="btn-quick-active-qr" class="btn-secondary" style="flex: 1; font-size: 12.5px;" type="button" title="One-click scan current classroom QR">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-            <span>Classroom QR</span>
           </button>
         </div>
       </div>

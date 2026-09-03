@@ -125,11 +125,22 @@ function makeHandler(attendanceType) {
         .eq('id', studentId)
         .maybeSingle();
 
+      const studentData = stu || { id: studentId, full_name: result.details.student?.name || 'Student' };
       eventBus.emit('attendance_recorded', {
         sessionId: result.activeSession?.id || row.session_id,
         record: {
           ...row,
-          students: stu || { id: studentId, full_name: result.details.student?.name || 'Student' },
+          students: studentData,
+        },
+      });
+
+      eventBus.emit('realtime_event', {
+        table: 'attendance',
+        action: 'INSERT',
+        record: {
+          ...row,
+          students: studentData,
+          locations: { name: result.targetLocation?.name || 'Sandlip Oasis Campus' },
         },
       });
     }

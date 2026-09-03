@@ -9,12 +9,42 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 /**
  * Subscribe to INSERT / UPDATE / DELETE events on a table.
- * Also includes a resilient heartbeat sync to guarantee real-time reflection
- * even if changes are made directly on Supabase dashboard or via REST.
+ * Combines native SSE stream from Express backend with Supabase channels and heartbeat.
  * Returns an unsubscribe function — call it in onDestroy.
  */
 export function subscribeTable(table, event = '*', callback) {
   let channel = null;
+  let eventSource = null;
+
+  // 1. Direct Server-Sent Events stream from backend for instant zero-latency updates
+  try {
+    const token = localStorage.getItem('oasis_admin_token') || '';
+    if (token && typeof window !== 'undefined' && window.EventSource) {
+      eventSource = new EventSource(`/api/admin/stream?token=${encodeURIComponent(token)}`);
+      
+      eventSource.addEventListener('realtime', (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          if (parsed && (!table || table === '*' || parsed.table === table)) {
+            callback(parsed);
+          }
+        } catch (_) {}
+      });
+
+      eventSource.addEventListener('attendance', (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          if (table === 'attendance' || table === '*' || !table) {
+            callback({ eventType: 'INSERT', table: 'attendance', record: parsed });
+          }
+        } catch (_) {}
+      });
+    }
+  } catch (e) {
+    console.warn('Admin stream setup note:', e.message);
+  }
+
+  // 2. Supabase postgres_changes channel
   try {
     channel = supabase
       .channel(`rt_${table}_${event}_${Math.random().toString(36).slice(2, 9)}`)
@@ -26,7 +56,7 @@ export function subscribeTable(table, event = '*', callback) {
     console.warn('Realtime channel error:', e);
   }
 
-  // Resilient heartbeat sync ensuring any external modification or deletion is reflected
+  // 3. Resilient heartbeat sync ensuring any external modification is reflected
   const interval = setInterval(() => {
     try {
       callback({ eventType: 'SYNC', table });
@@ -35,6 +65,9 @@ export function subscribeTable(table, event = '*', callback) {
 
   return () => {
     if (interval) clearInterval(interval);
+    if (eventSource) {
+      try { eventSource.close(); } catch {}
+    }
     if (channel) {
       try { supabase.removeChannel(channel); } catch {}
     }

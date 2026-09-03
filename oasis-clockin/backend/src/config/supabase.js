@@ -388,9 +388,15 @@ class MockQueryBuilder {
     const parts = filterString.split(',');
     this.filters.push((row) => {
       return parts.some((p) => {
-        const match = p.match(/([^.]+)\.ilike\.%([^%]+)%/);
-        if (match) {
-          const [, field, term] = match;
+        const trimmed = p.trim();
+        const eqMatch = trimmed.match(/([^.]+)\.eq\.(.+)/);
+        if (eqMatch) {
+          const [, field, term] = eqMatch;
+          return String(row[field] || '').toLowerCase() === term.toLowerCase();
+        }
+        const ilikeMatch = trimmed.match(/([^.]+)\.ilike\.%([^%]+)%/);
+        if (ilikeMatch) {
+          const [, field, term] = ilikeMatch;
           const val = String(row[field] || '').toLowerCase();
           return val.includes(term.toLowerCase());
         }

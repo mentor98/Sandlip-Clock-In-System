@@ -36,6 +36,25 @@ const { haversineDistanceMeters } = require('../utils/geofence');
 const { verifyLocationToken, decodeLocationToken } = require('../utils/qrToken');
 const ipRangeCheck = require('../utils/ipRangeCheck');
 
+// In-memory single-use QR and session scan registry to guarantee instant duplicate rejection
+const scannedStudentNonces = new Set();
+const scannedStudentSessions = new Set();
+
+function hasStudentScannedNonce(studentId, nonce) {
+  if (!studentId || !nonce) return false;
+  return scannedStudentNonces.has(`${studentId}:${nonce}`);
+}
+
+function hasStudentAttendedSession(studentId, sessionId) {
+  if (!studentId || !sessionId) return false;
+  return scannedStudentSessions.has(`${studentId}:${sessionId}`);
+}
+
+function registerStudentScanned(studentId, sessionId, nonce) {
+  if (studentId && nonce) scannedStudentNonces.add(`${studentId}:${nonce}`);
+  if (studentId && sessionId) scannedStudentSessions.add(`${studentId}:${sessionId}`);
+}
+
 function checkSameSubnetOrIp(studentIp, adminIp) {
   if (!studentIp || !adminIp) return false;
   const cleanStudent = String(studentIp).replace(/^.*:/, '').trim();
@@ -611,6 +630,7 @@ async function validateAttendance(params) {
 
       details.adminId = adminIdInQr;
       details.sessionId = sessionIdInQr;
+      details.qrNonce = qrCheck.payload?.nonce || null;
     } else {
       const msg = qrCheck.reason === 'stale_qr'
         ? 'This QR code has already expired or rotated. Please scan the current code on screen.'
@@ -629,30 +649,46 @@ async function validateAttendance(params) {
     checks.validQr = true;
   }
 
-  // ── 8. Duplicate attendance check ───────────────────────────────────────────
+  // ── 8. Duplicate attendance check & Single-use QR enforcement ───────────────
   if (checks.authentication) {
     const today = new Date().toISOString().slice(0, 10);
     const targetSessionId = details.sessionId || activeSession?.id || null;
+    const qrNonce = details.qrNonce || null;
 
-    let dupQuery = supabaseAdmin
-      .from('attendance')
-      .select('id, recorded_at, session_id')
-      .eq('student_id', studentId)
-      .eq('type', attendanceType);
-
-    if (targetSessionId) {
-      dupQuery = dupQuery.eq('session_id', targetSessionId);
-    } else if (targetLocation) {
-      dupQuery = dupQuery.eq('location_id', targetLocation.id).gte('recorded_at', today);
+    // Fast-path in-memory check for duplicate QR nonce or session scan
+    if (qrNonce && hasStudentScannedNonce(studentId, qrNonce)) {
+      checks.duplicate = true;
+      criticalFailures.push('You have already scanned this QR code. Each student can only scan the QR code once.');
+      securityAnomalies.push({ type: 'DUPLICATE_QR_SCAN', severity: 'HIGH' });
+    } else if (targetSessionId && hasStudentAttendedSession(studentId, targetSessionId)) {
+      checks.duplicate = true;
+      const targetLabel = activeSession?.title || 'this session';
+      criticalFailures.push(`You have already recorded attendance for ${targetLabel}. Each student can only scan once per session.`);
+      securityAnomalies.push({ type: 'DUPLICATE_SESSION_ATTENDANCE', severity: 'HIGH' });
     }
 
-    const { data: existing } = await dupQuery.limit(1);
+    if (!checks.duplicate) {
+      let dupQuery = supabaseAdmin
+        .from('attendance')
+        .select('id, recorded_at, session_id, type')
+        .eq('student_id', studentId);
 
-    if (existing && existing.length > 0) {
-      checks.duplicate = true;
-      const targetLabel = activeSession?.title || targetLocation?.name || 'this session';
-      criticalFailures.push(`You have already recorded your ${attendanceType === 'clock_in' ? 'clock in' : 'clock out'} for ${targetLabel}.`);
-      securityAnomalies.push({ type: 'DUPLICATE_ATTENDANCE_ATTEMPT', severity: 'LOW' });
+      if (targetSessionId) {
+        dupQuery = dupQuery.eq('session_id', targetSessionId);
+      } else if (targetLocation) {
+        dupQuery = dupQuery.eq('location_id', targetLocation.id).gte('recorded_at', today);
+      } else {
+        dupQuery = dupQuery.gte('recorded_at', today);
+      }
+
+      const { data: existing } = await dupQuery.limit(5);
+
+      if (existing && existing.length > 0) {
+        checks.duplicate = true;
+        const targetLabel = activeSession?.title || targetLocation?.name || 'this session';
+        criticalFailures.push(`You have already recorded your attendance for ${targetLabel}. Each student can only scan the QR code once.`);
+        securityAnomalies.push({ type: 'DUPLICATE_ATTENDANCE_ATTEMPT', severity: 'HIGH' });
+      }
     }
   }
 
@@ -713,4 +749,4 @@ async function validateAttendance(params) {
   };
 }
 
-module.exports = { validateAttendance };
+module.exports = { validateAttendance, registerStudentScanned };

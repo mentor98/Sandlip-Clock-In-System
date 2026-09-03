@@ -2,10 +2,73 @@ const express = require('express');
 const { supabaseAdmin } = require('../config/supabase');
 const { signSession } = require('../config/jwt');
 const { requireAuth } = require('../middleware/auth');
-const { validateAttendance } = require('../services/attendanceValidator');
+const { validateAttendance, registerStudentScanned } = require('../services/attendanceValidator');
 const eventBus = require('../utils/eventBus');
 
 const router = express.Router();
+
+// GET /api/auth/verify-student?id=SAN-2026-014 — Look up and verify student in database
+router.get('/verify-student', async (req, res) => {
+  try {
+    const rawId = (req.query.id || req.query.student_id || '').trim();
+    if (!rawId) {
+      return res.status(400).json({ exists: false, error: 'Student ID is required.' });
+    }
+
+    // Direct lookup in DB
+    let student = null;
+    const { data: bySid } = await supabaseAdmin
+      .from('students')
+      .select('id, full_name, student_id, email, status')
+      .eq('student_id', rawId)
+      .maybeSingle();
+
+    if (bySid) {
+      student = bySid;
+    } else {
+      const { data: byId } = await supabaseAdmin
+        .from('students')
+        .select('id, full_name, student_id, email, status')
+        .eq('id', rawId)
+        .maybeSingle();
+      if (byId) student = byId;
+    }
+
+    if (!student) {
+      // Case-insensitive fallback
+      const { data: allStudents } = await supabaseAdmin
+        .from('students')
+        .select('id, full_name, student_id, email, status');
+      if (allStudents) {
+        student = allStudents.find(s =>
+          (s.student_id && s.student_id.toLowerCase() === rawId.toLowerCase()) ||
+          (s.id && s.id.toLowerCase() === rawId.toLowerCase())
+        ) || null;
+      }
+    }
+
+    if (!student) {
+      return res.status(404).json({
+        exists: false,
+        error: `Student ID "${rawId}" not found in database. Please verify your Matric ID.`,
+      });
+    }
+
+    res.json({
+      exists: true,
+      student: {
+        id: student.id,
+        student_id: student.student_id,
+        full_name: student.full_name,
+        email: student.email,
+        status: student.status || 'active',
+      },
+    });
+  } catch (err) {
+    console.error('Verify student error:', err);
+    res.status(500).json({ exists: false, error: 'Server error checking student.' });
+  }
+});
 
 // GET /api/auth/next-id — Suggests next available sequential student ID for registration
 router.get('/next-id', async (_req, res) => {
@@ -424,39 +487,98 @@ router.post('/clockin-direct', async (req, res) => {
       .single();
     attendanceRecord = row;
 
+    // Register single-use QR scan in memory registry
+    registerStudentScanned(student.id, targetSessionId, result.details?.qrNonce);
+
     if (row) {
+      const studentPayload = {
+        id: student.id,
+        full_name: student.full_name,
+        student_id: student.student_id,
+        email: student.email,
+        registered_ip: student.registered_ip,
+        registered_mac: student.registered_mac,
+      };
+
       eventBus.emit('attendance_recorded', {
         sessionId: targetSessionId,
         record: {
           ...row,
-          students: {
-            id: student.id,
-            full_name: student.full_name,
-            student_id: student.student_id,
-            email: student.email,
-            registered_ip: student.registered_ip,
-            registered_mac: student.registered_mac,
-          },
+          students: studentPayload,
+        },
+      });
+
+      // Unified broadcast for Admin Dashboard real-time stream
+      eventBus.emit('realtime_event', {
+        table: 'attendance',
+        action: 'INSERT',
+        record: {
+          ...row,
+          students: studentPayload,
+          locations: { name: result.targetLocation?.name || 'Sandlip Oasis Campus' },
         },
       });
     }
+
+    return res.json({
+      success: true,
+      sessionToken,
+      deviceId,
+      student,
+      status: result.status,
+      riskScore: result.riskScore,
+      punctuality: result.punctuality,
+      punctualityLabel: result.punctualityLabel,
+      isLate: result.isLate,
+      checks: result.checks,
+      details: result.details,
+      distanceM: result.distanceM,
+      location_name: result.targetLocation?.name || 'Main Campus',
+      attendance: attendanceRecord,
+    });
   }
 
-  res.json({
-    success: result.approved,
-    sessionToken,
-    deviceId,
-    student,
+  // Handle rejected verification / duplicate scan attempts
+  const isDuplicate = Boolean(result.checks?.duplicate) ||
+    (result.criticalFailures && result.criticalFailures.some(f => f.toLowerCase().includes('already') || f.toLowerCase().includes('once')));
+  const primaryError = (result.criticalFailures && result.criticalFailures[0]) || 'Attendance verification failed.';
+
+  try {
+    await supabaseAdmin.from('audit_log').insert({
+      student_id: student.id,
+      event_type: 'attendance_rejected',
+      detail: {
+        attendanceType: attendance_type,
+        reasons: result.criticalFailures,
+        checks: result.checks,
+        riskScore: result.riskScore,
+        status: result.status,
+        session_id: session_id || null,
+        isDuplicate,
+      },
+      created_at: new Date().toISOString(),
+    });
+    eventBus.emit('realtime_event', {
+      table: 'audit_log',
+      action: 'INSERT',
+    });
+  } catch (_) {}
+
+  return res.status(isDuplicate ? 409 : 403).json({
+    success: false,
+    error: primaryError,
+    message: primaryError,
     status: result.status,
     riskScore: result.riskScore,
-    punctuality: result.punctuality,
-    punctualityLabel: result.punctualityLabel,
-    isLate: result.isLate,
     checks: result.checks,
     details: result.details,
-    distanceM: result.distanceM,
-    location_name: result.targetLocation?.name || 'Main Campus',
-    attendance: attendanceRecord,
+    criticalFailures: result.criticalFailures,
+    alreadyScanned: isDuplicate,
+    student: {
+      id: student.id,
+      student_id: student.student_id,
+      full_name: student.full_name,
+    },
   });
 });
 

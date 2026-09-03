@@ -6,18 +6,61 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { generateLocationToken } = require('../utils/qrToken');
 const { signSession } = require('../config/jwt');
 const { findSession, generateSessionQrPayload } = require('../utils/sharedSessions');
+const eventBus = require('../utils/eventBus');
 
 const router = express.Router();
 
-// Allow ?auth= query param as fallback for endpoints opened via window.open (no headers)
+// Allow ?auth= or ?token= query param as fallback for endpoints opened via window.open / EventSource (no headers)
 router.use((req, res, next) => {
-  if (!req.headers.authorization && req.query.auth) {
-    req.headers.authorization = `Bearer ${req.query.auth}`;
+  if (!req.headers.authorization && (req.query.auth || req.query.token)) {
+    req.headers.authorization = `Bearer ${req.query.auth || req.query.token}`;
   }
   next();
 });
 
 router.use(requireAuth, requireAdmin);
+
+// Realtime SSE stream for Admin Dashboard to get 0ms push updates
+router.get('/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+
+  res.write(`event: connected\ndata: ${JSON.stringify({ connectedAt: new Date().toISOString() })}\n\n`);
+
+  const onRealtimeEvent = (payload) => {
+    try {
+      res.write(`event: realtime\ndata: ${JSON.stringify(payload)}\n\n`);
+    } catch (_) {}
+  };
+
+  const onAttendanceRecorded = (payload) => {
+    try {
+      res.write(`event: attendance\ndata: ${JSON.stringify(payload)}\n\n`);
+    } catch (_) {}
+  };
+
+  eventBus.on('realtime_event', onRealtimeEvent);
+  eventBus.on('attendance_recorded', onAttendanceRecorded);
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch {
+      clearInterval(heartbeat);
+    }
+  }, 12000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    eventBus.removeListener('realtime_event', onRealtimeEvent);
+    eventBus.removeListener('attendance_recorded', onAttendanceRecorded);
+  });
+});
 
 // --- Locations & Geofence Resilience ---
 
