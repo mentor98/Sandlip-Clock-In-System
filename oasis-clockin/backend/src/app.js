@@ -74,6 +74,9 @@ if (!fs.existsSync(studentPwaPath)) {
 
 if (fs.existsSync(adminDistPath)) {
   app.use('/admin', express.static(adminDistPath));
+  app.get('/admin', (_req, res) => {
+    res.redirect('/admin/');
+  });
   app.get('/admin/*', (_req, res) => {
     res.sendFile(path.join(adminDistPath, 'index.html'));
   });
