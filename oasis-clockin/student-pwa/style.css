@@ -233,6 +233,10 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
 .btn-primary:active:not(:disabled) { transform: translateY(1px); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
+#btn-register {
+  margin-top: 20px;
+}
+
 .action-buttons-group {
   display: flex;
   gap: 10px;
