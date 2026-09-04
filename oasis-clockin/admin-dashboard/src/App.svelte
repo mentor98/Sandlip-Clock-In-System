@@ -49,11 +49,7 @@
     <aside class="sidebar" class:open={mobileMenuOpen}>
       <div class="brand">
         <div class="sidebar-logo-box">
-          <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="Oasis ClockIn Logo" class="sidebar-logo-img" />
-        </div>
-        <div class="brand-text">
-          <span class="brand-name">Oasis ClockIn</span>
-          <span class="brand-sub">Enterprise Portal</span>
+          <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="ClockIn Logo" class="sidebar-logo-img" />
         </div>
         <button class="close-drawer-btn" on:click={() => (mobileMenuOpen = false)} aria-label="Close menu">
           <Icon name="x" size={18} color="#94a3b8" />
@@ -74,7 +70,7 @@
       <div class="sidebar-footer">
         <a href="/" class="student-link" title="Open Student Mobile PWA">
           <Icon name="smartphone" size={15} />
-          <span>Student App</span>
+          <span>Access Student Portal</span>
         </a>
         <button class="logout" on:click={handleLogout}>
           <Icon name="logout" size={15} />
@@ -90,12 +86,6 @@
             <Icon name="menu" size={20} color="#0f172a" />
           </button>
           <h2 class="page-title">{tabLabels[tab] || ''}</h2>
-        </div>
-        <div class="topbar-right">
-          <span class="live-status">
-            <span class="pulse-dot"></span>
-            <span class="live-text">System Active</span>
-          </span>
         </div>
       </header>
       <div class="page">
@@ -132,13 +122,12 @@
     overflow-y: auto; border-right: 1px solid rgba(50, 240, 0, 0.12);
     z-index: 20;
   }
-  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; padding: 0 6px; }
-  .brand-text { flex: 1; }
+  .brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding: 0 4px; }
   .sidebar-logo-box {
-    height: 38px;
-    max-width: 72px;
+    height: 42px;
+    max-width: 150px;
     background: #ffffff;
-    padding: 3px 6px;
+    padding: 3px 8px;
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -153,8 +142,6 @@
     object-fit: contain;
     display: block;
   }
-  .brand-name { display: block; font-weight: 800; font-size: 15.5px; letter-spacing: -0.01em; color: #ffffff; }
-  .brand-sub { display: block; font-size: 10.5px; color: #93c5fd; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 
   .close-drawer-btn {
     display: none;
@@ -218,7 +205,7 @@
     display: flex; align-items: center; gap: 9px; padding: 9px 12px;
     border-radius: 8px; text-decoration: none; color: #32F000;
     background: rgba(50, 240, 0, 0.1); border: 1px solid rgba(50, 240, 0, 0.2);
-    font-size: 13px; font-weight: 700;
+    font-size: 12.5px; font-weight: 700; white-space: nowrap;
     transition: all 0.15s;
   }
   .student-link:hover { background: rgba(50, 240, 0, 0.18); color: #ffffff; }
@@ -239,16 +226,6 @@
     box-shadow: 0 1px 3px 0 rgba(7, 59, 120, 0.04);
   }
   .page-title { margin: 0; font-size: 18px; font-weight: 800; color: #071527; letter-spacing: -0.01em; }
-  .live-status {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-size: 12px; font-weight: 700; color: #15803d;
-    background: #f0fdf4; border: 1px solid #bbf7d0;
-    padding: 5px 12px; border-radius: 999px;
-  }
-  .pulse-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: #32F000;
-    box-shadow: 0 0 8px rgba(50, 240, 0, 0.8);
-  }
   .page { padding: 28px 32px; flex: 1; }
 
   @media (max-width: 992px) {
