@@ -13,6 +13,30 @@
   let editingStudent = null;
   let deviceModalStudent = null;
   let resetLink = '';
+  let copiedResetLink = false;
+  let copyTimeout = null;
+
+  async function copyToClipboard(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      copiedResetLink = true;
+      if (copyTimeout) clearTimeout(copyTimeout);
+      copyTimeout = setTimeout(() => { copiedResetLink = false; }, 3000);
+    } catch (err) {
+      console.error('Failed to copy', err);
+    }
+  }
 
   let newName = '', newId = '', newEmail = '';
 
@@ -83,11 +107,14 @@
   }
 
   async function resetDevice(s) {
-    error = ''; successMsg = ''; resetLink = '';
+    error = ''; successMsg = ''; resetLink = ''; copiedResetLink = false;
     try {
       const res = await api(`/admin/students/${s.id}/reset-device`, { method: 'POST' });
       resetLink = res.registrationLink;
       successMsg = `Device reset for ${s.full_name}. Share the registration link with the student.`;
+      if (deviceModalStudent && deviceModalStudent.id === s.id) {
+        deviceModalStudent = null;
+      }
       load();
     } catch (e) { error = e.message; }
   }
@@ -163,10 +190,26 @@
   {#if resetLink}
     <div class="reset-link-card">
       <div class="reset-link-header">
-        <Icon name="key" size={16} color="#0f766e" />
-        <strong>Direct Registration Passkey Link:</strong>
+        <div class="reset-link-title">
+          <Icon name="key" size={16} color="#0f766e" />
+          <strong>Direct Registration & Passkey Link:</strong>
+        </div>
+        <div class="reset-link-actions">
+          <button class="btn btn-sm {copiedResetLink ? 'btn-green' : 'btn-primary'}" on:click={() => copyToClipboard(resetLink)}>
+            <Icon name={copiedResetLink ? 'check' : 'copy'} size={13} />
+            <span>{copiedResetLink ? 'Copied to Clipboard!' : 'Copy Link'}</span>
+          </button>
+          <a class="btn btn-sm ghost" href={resetLink} target="_blank" rel="noopener noreferrer">
+            <Icon name="external-link" size={13} />
+            <span>Open PWA</span>
+          </a>
+          <button class="btn btn-sm ghost" on:click={() => { resetLink = ''; copiedResetLink = false; }} title="Dismiss">
+            <Icon name="x" size={13} />
+          </button>
+        </div>
       </div>
       <code>{resetLink}</code>
+      <p class="hint">Share this secure link with the student so they can bind their hardware device or authenticate directly on their phone or laptop.</p>
     </div>
   {/if}
 
@@ -252,6 +295,10 @@
           {/if}
         </div>
         <div class="modal-actions">
+          <button class="btn btn-warn" on:click={() => resetDevice(deviceModalStudent)} title="Revoke registered devices and generate a fresh registration link">
+            <Icon name="refresh" size={13} />
+            <span>Reset Trusted Device</span>
+          </button>
           <button class="btn ghost" on:click={() => (deviceModalStudent = null)}>Close</button>
         </div>
       </div>
@@ -412,7 +459,9 @@
     background: #f0fdfa; border: 1px solid #ccfbf1; border-radius: 10px;
     padding: 14px 18px; display: flex; flex-direction: column; gap: 8px;
   }
-  .reset-link-header { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #0f766e; }
+  .reset-link-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .reset-link-title { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #0f766e; }
+  .reset-link-actions { display: flex; align-items: center; gap: 6px; }
   .reset-link-card code {
     background: white; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccfbf1;
     font-size: 12.5px; color: #0f766e; word-break: break-all;

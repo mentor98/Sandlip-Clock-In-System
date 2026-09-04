@@ -31,7 +31,8 @@
       stats.pendingDevices = (devicesRes.devices || []).filter(d => d.status === 'PENDING').length;
 
       const today = new Date().toISOString().slice(0, 10);
-      const todayRecords = (attendanceRes.attendance || []).filter(r => r.recorded_at?.startsWith(today));
+      const allAttendance = attendanceRes.attendance || [];
+      const todayRecords = allAttendance.filter(r => r.recorded_at?.startsWith(today));
       stats.presentToday = new Set(todayRecords.filter(r => r.type === 'clock_in').map(r => r.student_id)).size;
 
       const auditRes = await api('/admin/audit-log').catch(() => ({ audit_log: [] }));
@@ -39,7 +40,7 @@
       stats.rejectedToday = todayAudit.filter(e => e.event_type === 'attendance_rejected' && e.detail?.status === 'REJECTED').length;
       stats.reviewToday = todayAudit.filter(e => e.event_type === 'attendance_rejected' && e.detail?.status === 'REVIEW').length;
 
-      recentAttendance = todayRecords.slice(0, 10);
+      recentAttendance = (todayRecords.length > 0 ? todayRecords : allAttendance).slice(0, 10);
 
       const activeSessions = (sessionRes.sessions || [])
         .filter(s => s.status === 'ACTIVE')

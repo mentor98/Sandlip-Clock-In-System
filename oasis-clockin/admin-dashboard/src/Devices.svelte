@@ -8,6 +8,8 @@
   let filter = 'ALL';
   let error = '';
   let successMsg = '';
+  let resetLink = '';
+  let copiedResetLink = false;
   let loading = false;
 
   async function load() {
@@ -41,6 +43,25 @@
       successMsg = `Device revoked.`;
       load();
     } catch (e) { error = e.message; }
+  }
+
+  async function resetDevice(d) {
+    if (!confirm(`Reset hardware binding for ${d.students?.full_name || 'student'}? This will revoke this device and generate a fresh registration link.`)) return;
+    error = ''; successMsg = ''; resetLink = ''; copiedResetLink = false;
+    try {
+      const studentId = d.student_id;
+      const res = await api(`/admin/students/${studentId}/reset-device`, { method: 'POST' });
+      resetLink = res.registrationLink;
+      successMsg = `Device successfully reset for ${d.students?.full_name || 'student'}. Share the new registration link below.`;
+      load();
+    } catch (e) { error = e.message; }
+  }
+
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      copiedResetLink = true;
+      setTimeout(() => copiedResetLink = false, 3000);
+    });
   }
 
   async function block(d) {
@@ -101,6 +122,32 @@
   {#if successMsg}<div class="notice success">{successMsg}</div>{/if}
   {#if error}<div class="notice error">{error}</div>{/if}
 
+  {#if resetLink}
+    <div class="reset-link-card">
+      <div class="reset-link-header">
+        <div class="reset-link-title">
+          <Icon name="check" size={16} color="#0f766e" />
+          <strong>Fresh Device Registration Link Generated</strong>
+        </div>
+        <div class="reset-link-actions">
+          <button class="btn btn-sm {copiedResetLink ? 'btn-green' : 'btn-primary'}" on:click={() => copyToClipboard(resetLink)}>
+            <Icon name="copy" size={13} />
+            <span>{copiedResetLink ? 'Copied Link!' : 'Copy Link'}</span>
+          </button>
+          <a class="btn btn-sm ghost" href={resetLink} target="_blank" rel="noopener noreferrer">
+            <Icon name="external-link" size={13} />
+            <span>Open PWA</span>
+          </a>
+          <button class="btn btn-sm ghost" on:click={() => { resetLink = ''; copiedResetLink = false; }} title="Dismiss">
+            <Icon name="x" size={13} />
+          </button>
+        </div>
+      </div>
+      <code>{resetLink}</code>
+      <p class="reset-desc">Direct the student to open this URL on their trusted device (PC or Phone) to bind their hardware MAC and authorized campus network.</p>
+    </div>
+  {/if}
+
   <div class="table-wrap">
     {#if loading}
       <p class="muted center pad-24">Loading device inventory…</p>
@@ -146,6 +193,10 @@
               <td class="muted">{formatDate(d.registered_at)}</td>
               <td class="muted">{formatDate(d.last_seen_at)}</td>
               <td class="actions">
+                <button class="btn btn-sm btn-warn" on:click={() => resetDevice(d)} title="Reset Device & Generate New Link">
+                  <Icon name="refresh" size={13} />
+                  <span>Reset</span>
+                </button>
                 {#if d.status === 'PENDING'}
                   <button class="btn btn-sm btn-green" on:click={() => authorize(d)} title="Authorize Device">
                     <Icon name="check" size={13} />
@@ -270,6 +321,25 @@
   .btn-green:hover { background: #d1fae5; }
   .btn-del { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
   .btn-del:hover { background: #fee2e2; }
+  .btn-warn { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+  .btn-warn:hover { background: #fef3c7; }
+  .btn-primary { background: #073B78; color: white; border: 1px solid #073B78; }
+  .btn-primary:hover { opacity: 0.9; }
+
+  .reset-link-card {
+    background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 12px;
+    padding: 16px 20px; display: flex; flex-direction: column; gap: 10px;
+    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.08);
+  }
+  .reset-link-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .reset-link-title { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: #0f766e; }
+  .reset-link-actions { display: flex; align-items: center; gap: 6px; }
+  .reset-link-card code {
+    background: white; border: 1px solid #ccfbf1; padding: 10px 14px;
+    border-radius: 8px; font-family: monospace; font-size: 12px;
+    word-break: break-all; color: #134e4a;
+  }
+  .reset-desc { font-size: 12px; color: #0d9488; margin: 0; }
 
   .empty-state {
     padding: 48px 20px; text-align: center; color: #94a3b8;

@@ -120,7 +120,7 @@ router.get('/', async (_req, res) => {
       .order('created_at', { ascending: false })
       .limit(100);
 
-    if (!error && data && data.length > 0) {
+    if (!error && Array.isArray(data)) {
       return res.json({ sessions: data });
     }
 
@@ -132,7 +132,7 @@ router.get('/', async (_req, res) => {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (!err2 && rawData && rawData.length > 0) {
+      if (!err2 && Array.isArray(rawData)) {
         return res.json({
           sessions: rawData.map((s) => ({
             ...s,
@@ -311,7 +311,12 @@ router.patch('/:id/close', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const sessionId = req.params.id;
   try {
-    await supabaseAdmin.from('attendance_sessions').delete().eq('id', sessionId);
+    // Unlink any attendance records pointing to this session first
+    await supabaseAdmin.from('attendance').update({ session_id: null }).eq('session_id', sessionId);
+    const { error } = await supabaseAdmin.from('attendance_sessions').delete().eq('id', sessionId);
+    if (error) {
+      console.warn('Supabase session delete notice:', error.message || error);
+    }
   } catch (err) {
     console.warn('Delete session notice:', err.message);
   }

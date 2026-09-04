@@ -3,20 +3,7 @@ const bwipjs = require('bwip-js');
 const { supabaseAdmin } = require('../config/supabase');
 const { generateLocationToken } = require('./qrToken');
 
-const inMemorySessions = [
-  {
-    id: 'e0000000-0000-0000-0000-000000000001',
-    title: 'Morning Class & Lab Session',
-    location_id: 'c0000000-0000-0000-0000-000000000001',
-    locations: { name: 'Sandlip Oasis - Lecture & Hall Complex' },
-    created_by: 'a0000000-0000-0000-0000-000000000001',
-    status: 'ACTIVE',
-    started_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-    ends_at: new Date(Date.now() + 3600000 * 8).toISOString(),
-    closed_at: null,
-    created_at: new Date().toISOString(),
-  },
-];
+const inMemorySessions = [];
 
 function toValidUuid(val, defaultUuid = 'c0000000-0000-0000-0000-000000000001') {
   if (!val || typeof val !== 'string') return defaultUuid;
