@@ -39,8 +39,8 @@
   <section class="form-container">
     <div class="form-card">
       <div class="brand-header">
-        <div class="logo-box">
-          <Icon name="clock" size={24} color="#ffffff" strokeWidth={2.2} />
+        <div class="admin-logo-box">
+          <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="Oasis ClockIn Logo" class="admin-logo-img" />
         </div>
         <div>
           <h1>Oasis ClockIn</h1>
@@ -152,16 +152,20 @@
     margin-bottom: 24px;
   }
 
-  .logo-box {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, #32F000 0%, #0db872 32%, #0284c7 68%, #073B78 100%);
+  .admin-logo-box {
+    height: 46px;
+    max-width: 110px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 16px rgba(50, 240, 0, 0.35);
     flex-shrink: 0;
+  }
+  .admin-logo-img {
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    display: block;
   }
 
   h1 {

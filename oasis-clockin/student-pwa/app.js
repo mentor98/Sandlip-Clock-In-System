@@ -477,10 +477,13 @@ document.getElementById('btn-back-signin').onclick = () => {
   hideSigninAlert();
 };
 
-// Auto suggest ID button
-document.getElementById('btn-suggest-id').onclick = async () => {
-  await fetchNextStudentId();
-};
+// Auto suggest ID button (if present)
+const btnSuggestId = document.getElementById('btn-suggest-id');
+if (btnSuggestId) {
+  btnSuggestId.onclick = async () => {
+    await fetchNextStudentId();
+  };
+}
 
 async function fetchNextStudentId() {
   try {

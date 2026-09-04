@@ -8,6 +8,8 @@
 <meta property="og:title" content="Oasis ClockIn" />
 <meta property="og:description" content="Secure student attendance tracking system with passkey / WebAuthn authentication, geofencing, QR verification, absence marking, and administrative controls." />
 <link rel="manifest" href="manifest.json" />
+<link rel="icon" type="image/png" href="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" />
+<link rel="apple-touch-icon" href="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" />
 <meta name="theme-color" content="#0f766e" />
 <link rel="stylesheet" href="style.css?v=2.3" />
 </head>
@@ -18,24 +20,13 @@
     <!-- Centered Inputs & Direct Clock In -->
     <section class="panel panel-center">
       <div class="form-wrap">
-        <div class="brand-sub-header">
-          <div class="brand-header-left">
-            <div class="brand-icon small">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-            <div>
-              <span class="brand-title small">Oasis ClockIn</span>
-              <span class="brand-sub">Student Attendance Portal</span>
-            </div>
+        <div class="brand-center-header">
+          <div class="brand-logo-wrap center-logo">
+            <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="ClockIn Logo" class="brand-logo-img" />
           </div>
-          <div id="front-server-pill" class="server-status-pill" title="Network Connection Status">
-            <span class="server-status-dot online" id="front-server-dot"></span>
-            <span id="server-status-label">Online</span>
-          </div>
+          <div class="brand-sub-portal">Student Attendance Portal</div>
+          <p class="form-sub-hint">Enter your student / matric ID to clock in directly</p>
         </div>
-
-        <h2>Student Clock In</h2>
-        <p class="form-sub">Enter your student / matric ID to clock in directly</p>
         
         <!-- Live GPS Proximity Line -->
         <div class="front-loc-pill">
@@ -88,13 +79,6 @@
           <span>First time coming?</span>
           <button id="btn-goto-register" class="btn-link-inline">Register to get your ID &amp; Clock In</button>
         </div>
-        
-        <div class="portal-switch-box">
-          <a href="/admin/" class="portal-switch-link">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            <span>Switch to Admin Dashboard</span>
-          </a>
-        </div>
       </div>
     </section>
   </main>
@@ -104,18 +88,13 @@
     <!-- Centered Registration & ID Generation -->
     <section class="panel panel-center">
       <div class="form-wrap">
-        <div class="brand-sub-header">
-          <div class="brand-icon small">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <div class="brand-center-header">
+          <div class="brand-logo-wrap center-logo">
+            <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="ClockIn Logo" class="brand-logo-img" />
           </div>
-          <div>
-            <span class="brand-title small">Oasis ClockIn</span>
-            <span class="brand-sub">First-Time Student Registration</span>
-          </div>
+          <h2 class="center-title">Register &amp; Get Student ID</h2>
+          <div class="brand-sub-reg">First-Time Student Registration</div>
         </div>
-
-        <h2>Register &amp; Get Student ID</h2>
-        <p class="form-sub">Provide your details to receive your Student ID and clock in</p>
 
         <label for="reg-name">Full Name</label>
         <div class="input-wrap">
@@ -129,14 +108,8 @@
           <input id="reg-email" type="email" placeholder="jane@oasis.edu" autocomplete="email" />
         </div>
 
-        <div class="sid-label-row">
-          <label for="reg-sid" style="margin:0">Assigned Student ID</label>
-          <button id="btn-suggest-id" class="btn-micro" type="button">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            <span>Auto-Generate</span>
-          </button>
-        </div>
-        <div class="input-wrap" style="margin-top: 6px;">
+        <label for="reg-sid">Assigned Student ID</label>
+        <div class="input-wrap">
           <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           <input id="reg-sid" type="text" placeholder="SAN-2026-017" />
         </div>
@@ -163,8 +136,8 @@
       <!-- Top Navigation Bar -->
       <header class="topbar">
         <div class="topbar-brand">
-          <div class="brand-icon small">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <div class="brand-logo-wrap small">
+            <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="Oasis ClockIn Logo" class="brand-logo-img" />
           </div>
           <div>
             <span class="brand-title small">Oasis ClockIn</span>

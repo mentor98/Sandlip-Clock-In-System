@@ -89,6 +89,75 @@ html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink-90
   margin-bottom: 20px;
 }
 
+.brand-center-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.brand-sub-portal {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-800);
+  letter-spacing: -0.01em;
+  margin: 0 0 4px;
+  text-align: center;
+}
+
+.form-sub-hint {
+  color: var(--ink-500);
+  font-size: 13px;
+  margin: 0 0 16px;
+  text-align: center;
+}
+
+.center-title {
+  text-align: center;
+  margin: 6px 0 18px;
+}
+
+.brand-center-header .center-title {
+  margin: 0 0 6px;
+}
+
+.brand-sub-reg {
+  font-size: 14px;
+  color: var(--ink-500);
+  font-weight: 500;
+  text-align: center;
+  margin: 0 0 16px;
+}
+
+.brand-logo-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.brand-logo-wrap.center-logo {
+  height: 52px;
+  max-width: 175px;
+  margin: 0 auto 10px;
+}
+.brand-logo-wrap.login-logo {
+  height: 40px;
+  max-width: 105px;
+}
+.brand-logo-wrap.small {
+  height: 32px;
+  max-width: 85px;
+}
+.brand-logo-img {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  display: block;
+}
+
 .brand { position: absolute; top: 40px; left: 56px; display: flex; align-items: center; gap: 12px; }
 .brand-icon {
   width: 40px; height: 40px; border-radius: 10px;
@@ -188,17 +257,23 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
 }
 
 .front-loc-pill {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 5px 12px;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 14px;
+  padding: 5px 14px;
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
   color: #15803d;
-  margin-bottom: 12px;
+  text-align: center;
 }
 
 .first-time-prompt {
@@ -433,8 +508,9 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
 
 .location-box {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  color: var(--ink-500); font-size: 13px; margin: 12px 0 18px; min-height: 20px;
+  color: var(--ink-500); font-size: 13px; margin: 12px auto 18px; min-height: 20px;
   padding: 5px 14px; background: var(--ink-100); border-radius: 999px;
+  text-align: center;
 }
 .location-line { font-weight: 600; color: var(--ink-700); }
 
@@ -447,7 +523,8 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
 .qr-attached-banner {
   background: #f0fdf4; border: 1px solid #86efac; border-radius: var(--radius-md);
   padding: 8px 14px; font-size: 12.5px; font-weight: 600; color: #15803d;
-  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px;
+  display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 auto 14px;
+  width: fit-content; text-align: center;
 }
 .btn-text {
   background: none; border: none; cursor: pointer; color: var(--blue-deep);

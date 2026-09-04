@@ -48,8 +48,8 @@
 
     <aside class="sidebar" class:open={mobileMenuOpen}>
       <div class="brand">
-        <div class="logo-box">
-          <Icon name="clock" size={20} color="#ffffff" strokeWidth={2.2} />
+        <div class="sidebar-logo-box">
+          <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="Oasis ClockIn Logo" class="sidebar-logo-img" />
         </div>
         <div class="brand-text">
           <span class="brand-name">Oasis ClockIn</span>
@@ -134,12 +134,24 @@
   }
   .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; padding: 0 6px; }
   .brand-text { flex: 1; }
-  .logo-box {
-    width: 38px; height: 38px; border-radius: 10px;
-    background: linear-gradient(135deg, #32F000 0%, #0db872 32%, #0284c7 68%, #073B78 100%);
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 14px rgba(50, 240, 0, 0.35);
+  .sidebar-logo-box {
+    height: 38px;
+    max-width: 72px;
+    background: #ffffff;
+    padding: 3px 6px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
     flex-shrink: 0;
+  }
+  .sidebar-logo-img {
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    display: block;
   }
   .brand-name { display: block; font-weight: 800; font-size: 15.5px; letter-spacing: -0.01em; color: #ffffff; }
   .brand-sub { display: block; font-size: 10.5px; color: #93c5fd; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
