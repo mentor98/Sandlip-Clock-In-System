@@ -374,7 +374,7 @@ router.post('/direct-login', async (req, res) => {
 
 // POST /api/auth/clockin-direct — Seamless 1-step direct Clock-In for student by ID
 router.post('/clockin-direct', async (req, res) => {
-  const { student_id, device_mac, latitude, longitude, accuracy, location_id, location_token, session_id, attendance_type = 'clock_in' } = req.body || {};
+  const { student_id, device_id, device_mac, latitude, longitude, accuracy, location_id, location_token, session_id, attendance_type = 'clock_in' } = req.body || {};
   if (!student_id) {
     return res.status(400).json({ error: 'student_id is required.' });
   }

@@ -252,9 +252,30 @@ create table if not exists sessions (
 );
 
 alter table sessions enable row level security;
+drop policy if exists "no direct client access to sessions" on sessions;
+create policy "no direct client access to sessions"
+  on sessions for all using (false);
+
 create index if not exists idx_sessions_user_id on sessions(user_id);
 create index if not exists idx_sessions_device_id on sessions(device_id);
 create index if not exists idx_sessions_status on sessions(status);
+
+-- Holidays table
+create table if not exists holidays (
+  id uuid primary key default gen_random_uuid(),
+  date date not null,
+  description text
+);
+alter table holidays enable row level security;
+drop policy if exists "no direct client access to holidays" on holidays;
+create policy "no direct client access to holidays"
+  on holidays for all using (false);
+
+do $$
+begin
+  alter publication supabase_realtime add table sessions;
+exception when others then null;
+end $$;
 
 -- Ensure primary location is configured as Sandlip Oasis (8.92811, 11.33090, 150m)
 insert into locations (id, name, latitude, longitude, geofence_radius_m)

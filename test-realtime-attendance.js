@@ -74,6 +74,7 @@ async function runRealtimeTest() {
       }
     });
   });
+  sseReq.on('error', (e) => console.log('SSE Stream Notice:', e.message));
   sseReq.end();
 
   // Wait 400ms for SSE connection

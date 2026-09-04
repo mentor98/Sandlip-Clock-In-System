@@ -577,4 +577,4 @@ if (!supabaseAdmin) {
   };
 }
 
-module.exports = { supabaseAdmin };
+module.exports = { supabaseAdmin, isSupabaseConfigured };
