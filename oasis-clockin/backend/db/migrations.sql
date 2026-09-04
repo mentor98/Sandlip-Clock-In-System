@@ -193,3 +193,90 @@ create index if not exists idx_attendance_student_date on attendance(student_id,
 create index if not exists idx_attendance_session on attendance(session_id);
 create index if not exists idx_audit_log_student on audit_log(student_id);
 create index if not exists idx_sessions_status on attendance_sessions(status);
+
+-- ── 12. Security & Location Verification Upgrade ─────────────────────────
+
+-- Attendance: add method, distance, accuracy, platform, and session telemetry
+alter table attendance
+  add column if not exists clock_in_method text default 'LOGIN',
+  add column if not exists distance_meters double precision,
+  add column if not exists location_verified boolean default false,
+  add column if not exists user_agent text,
+  add column if not exists device_platform text,
+  add column if not exists qr_token_id text,
+  add column if not exists qr_session_id text,
+  add column if not exists server_timestamp timestamptz default now();
+
+-- Devices: add persistent browser identity, location, and telemetry
+alter table devices
+  add column if not exists device_id text,
+  add column if not exists device_name text,
+  add column if not exists platform text,
+  add column if not exists first_ip text,
+  add column if not exists last_ip text,
+  add column if not exists device_mac_reference text,
+  add column if not exists last_location_lat double precision,
+  add column if not exists last_location_lng double precision;
+
+create index if not exists idx_devices_device_id on devices(device_id);
+
+-- Audit log: add complete security event attributes
+alter table audit_log
+  add column if not exists device_id text,
+  add column if not exists session_id uuid,
+  add column if not exists attendance_session_id uuid,
+  add column if not exists method text,
+  add column if not exists event text,
+  add column if not exists result text,
+  add column if not exists reason text,
+  add column if not exists ip_address text,
+  add column if not exists user_agent text,
+  add column if not exists latitude double precision,
+  add column if not exists longitude double precision,
+  add column if not exists gps_accuracy double precision,
+  add column if not exists distance_meters double precision;
+
+-- Authenticated student sessions table
+create table if not exists sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references students(id) on delete cascade,
+  device_id text,
+  session_token_hash text,
+  ip_address text,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  expires_at timestamptz,
+  revoked_at timestamptz,
+  status text not null default 'ACTIVE'
+);
+
+alter table sessions enable row level security;
+create index if not exists idx_sessions_user_id on sessions(user_id);
+create index if not exists idx_sessions_device_id on sessions(device_id);
+create index if not exists idx_sessions_status on sessions(status);
+
+-- Ensure primary location is configured as Sandlip Oasis (8.92811, 11.33090, 150m)
+insert into locations (id, name, latitude, longitude, geofence_radius_m)
+values (
+  'c0000000-0000-0000-0000-000000000001',
+  'Sandlip Oasis - Lecture & Hall Complex',
+  8.92811,
+  11.33090,
+  150
+)
+on conflict (id) do update set
+  name = 'Sandlip Oasis - Lecture & Hall Complex',
+  latitude = 8.92811,
+  longitude = 11.33090,
+  geofence_radius_m = 150;
+
+update organization_config set
+  name = 'Sandlip Oasis',
+  address = 'Sandlip Oasis - Lecture & Hall Complex',
+  latitude = 8.92811,
+  longitude = 11.33090,
+  attendance_radius_m = 150
+where id = 'default';
+
+notify pgrst, 'reload schema';

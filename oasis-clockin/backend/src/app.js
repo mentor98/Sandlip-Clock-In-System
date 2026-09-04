@@ -13,6 +13,7 @@ const adminRoutes = require('./routes/admin');
 const adminAuthRoutes = require('./routes/adminAuth');
 const organizationRoutes = require('./routes/organization');
 const sessionRoutes = require('./routes/sessions');
+const deviceRoutes = require('./routes/device');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -72,6 +73,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/admin-auth', authLimiter, adminAuthRoutes);
 app.use('/api/organization', organizationRoutes);
 app.use('/api/sessions', sessionRoutes);
+app.use('/api/device', deviceRoutes);
+app.use('/api/location', deviceRoutes);
 
 // Static assets serving for standalone node execution
 let adminDistPath = path.join(__dirname, '../../admin-dashboard/dist');

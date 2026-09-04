@@ -117,11 +117,13 @@ router.get('/', async (_req, res) => {
     const { data, error } = await supabaseAdmin
       .from('attendance_sessions')
       .select('*, locations(name)')
+      .neq('status', 'DELETED')
       .order('created_at', { ascending: false })
       .limit(100);
 
     if (!error && Array.isArray(data)) {
-      return res.json({ sessions: data });
+      const activeOrClosed = data.filter((s) => s.status !== 'DELETED' && !s.deleted_at);
+      return res.json({ sessions: activeOrClosed });
     }
 
     if (error) {
@@ -129,23 +131,26 @@ router.get('/', async (_req, res) => {
       const { data: rawData, error: err2 } = await supabaseAdmin
         .from('attendance_sessions')
         .select('*')
+        .neq('status', 'DELETED')
         .order('created_at', { ascending: false })
         .limit(100);
 
       if (!err2 && Array.isArray(rawData)) {
-        return res.json({
-          sessions: rawData.map((s) => ({
+        const activeOrClosed = rawData
+          .filter((s) => s.status !== 'DELETED' && !s.deleted_at)
+          .map((s) => ({
             ...s,
             locations: s.locations || { name: 'Sandlip Oasis Campus' },
-          })),
-        });
+          }));
+        return res.json({ sessions: activeOrClosed });
       }
     }
   } catch (err) {
     console.warn('Load sessions query exception:', err.message);
   }
 
-  res.json({ sessions: inMemorySessions });
+  const validInMem = inMemorySessions.filter((s) => s.status !== 'DELETED' && !s.deleted_at);
+  res.json({ sessions: validInMem });
 });
 
 // POST /api/sessions — create and immediately start a session
@@ -311,8 +316,25 @@ router.patch('/:id/close', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const sessionId = req.params.id;
   try {
-    // Unlink any attendance records pointing to this session first
-    await supabaseAdmin.from('attendance').update({ session_id: null }).eq('session_id', sessionId);
+    // 1. Unlink any attendance records pointing to this session first
+    try {
+      await supabaseAdmin.from('attendance').update({ session_id: null }).eq('session_id', sessionId);
+    } catch (_) {}
+
+    // 2. Unlink any audit_log entries referencing this session
+    try {
+      await supabaseAdmin.from('audit_log').update({ attendance_session_id: null }).eq('attendance_session_id', sessionId);
+    } catch (_) {}
+
+    // 3. Mark as DELETED and closed first (soft-delete guarantee)
+    try {
+      await supabaseAdmin
+        .from('attendance_sessions')
+        .update({ status: 'DELETED', closed_at: new Date().toISOString() })
+        .eq('id', sessionId);
+    } catch (_) {}
+
+    // 4. Hard delete from database
     const { error } = await supabaseAdmin.from('attendance_sessions').delete().eq('id', sessionId);
     if (error) {
       console.warn('Supabase session delete notice:', error.message || error);
@@ -321,10 +343,25 @@ router.delete('/:id', async (req, res) => {
     console.warn('Delete session notice:', err.message);
   }
 
+  // Remove from inMemorySessions
   const idx = inMemorySessions.findIndex((s) => s.id === sessionId);
-  if (idx !== -1) inMemorySessions.splice(idx, 1);
+  if (idx !== -1) {
+    inMemorySessions.splice(idx, 1);
+  }
 
-  res.json({ success: true });
+  // Broadcast realtime event so connected Admin Dashboards update immediately without page refresh
+  eventBus.emit('realtime_event', {
+    table: 'attendance_sessions',
+    action: 'DELETE',
+    record: { id: sessionId },
+  });
+  eventBus.emit('realtime_event', {
+    table: 'sessions',
+    action: 'DELETE',
+    record: { id: sessionId },
+  });
+
+  res.json({ success: true, deletedId: sessionId });
 });
 
 // GET /api/sessions/:id/attendance — who clocked in during this session

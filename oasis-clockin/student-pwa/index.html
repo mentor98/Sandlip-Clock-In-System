@@ -239,6 +239,43 @@
           <p id="verify-message" class="v-msg"></p>
           <div id="verify-checks" class="v-checks"></div>
         </div>
+
+        <!-- Live Hardware & Telemetry Status -->
+        <div class="telemetry-box" id="telemetry-box">
+          <div class="telemetry-header">
+            <div class="telemetry-title-group">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span class="telemetry-title">Device &amp; Campus Telemetry</span>
+            </div>
+            <span class="telemetry-badge" id="telemetry-badge">SECURE</span>
+          </div>
+          <div class="telemetry-grid">
+            <div class="telemetry-item">
+              <span class="telemetry-label">Device ID</span>
+              <span class="telemetry-val" id="tel-device-id">--</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">Device Name</span>
+              <span class="telemetry-val" id="tel-device-name">--</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">Network / IP</span>
+              <span class="telemetry-val" id="tel-network-ip">192.168.1.156</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">Hardware MAC</span>
+              <span class="telemetry-val" id="tel-mac">BE:64:B4:14:4D:67</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">Live Coordinates</span>
+              <span class="telemetry-val" id="tel-coords">8.92811° N, 11.33090° E</span>
+            </div>
+            <div class="telemetry-item">
+              <span class="telemetry-label">Campus Distance</span>
+              <span class="telemetry-val text-success" id="tel-distance">0 m (Inside Perimeter)</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Attendance History -->
