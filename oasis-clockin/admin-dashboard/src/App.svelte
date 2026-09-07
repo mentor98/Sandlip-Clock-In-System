@@ -48,9 +48,7 @@
 
     <aside class="sidebar" class:open={mobileMenuOpen}>
       <div class="brand">
-        <div class="sidebar-logo-box">
-          <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="ClockIn Logo" class="sidebar-logo-img" />
-        </div>
+        <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="ClockIn Logo" class="sidebar-logo-img" />
         <button class="close-drawer-btn" on:click={() => (mobileMenuOpen = false)} aria-label="Close menu">
           <Icon name="x" size={18} color="#94a3b8" />
         </button>
@@ -123,22 +121,10 @@
     z-index: 20;
   }
   .brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding: 0 4px; }
-  .sidebar-logo-box {
-    height: 42px;
-    max-width: 150px;
-    background: #ffffff;
-    padding: 3px 8px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-    flex-shrink: 0;
-  }
   .sidebar-logo-img {
-    height: 100%;
+    height: 38px;
     width: auto;
-    max-width: 100%;
+    max-width: 160px;
     object-fit: contain;
     display: block;
   }

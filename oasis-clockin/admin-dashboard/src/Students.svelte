@@ -338,10 +338,10 @@
               <td class="mono">
                 <span class="ip-chip">{s.registered_ip || (s.devices?.[0]?.ip_address) || '—'}</span>
               </td>
-              <td>
+              <td class="nowrap-cell">
                 <button class="device-badge-btn" on:click={() => (deviceModalStudent = s)}>
                   <Icon name="smartphone" size={13} />
-                  <span>{activeDevices(s).length} device{activeDevices(s).length !== 1 ? 's' : ''}</span>
+                  <span>{activeDevices(s).length}&nbsp;device{activeDevices(s).length !== 1 ? 's' : ''}</span>
                 </button>
               </td>
               <td>
@@ -476,7 +476,7 @@
   }
   table {
     width: 100%;
-    min-width: 680px;
+    min-width: 980px;
     border-collapse: collapse;
     font-size: 13.5px;
   }
@@ -484,6 +484,7 @@
     background: #f8fafc; text-align: left; padding: 12px 20px;
     color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
     letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
   }
   td { padding: 13px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
   tr:last-child td { border-bottom: none; }
@@ -498,13 +499,41 @@
   .pad-24 { padding: 24px; }
   .count-txt { font-size: 12.5px; color: #64748b; margin: 0; }
 
-  .actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .nowrap-cell {
+    white-space: nowrap;
+  }
+
+  .actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+  .actions .btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 
   .device-badge-btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: #f0fdfa; border: 1px solid #ccfbf1; color: #0f766e;
-    padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
-    cursor: pointer; transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #f0fdfa;
+    border: 1px solid #ccfbf1;
+    color: #0f766e;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .device-badge-btn span {
+    white-space: nowrap;
+    display: inline-block;
   }
   .device-badge-btn:hover { background: #ccfbf1; }
 
