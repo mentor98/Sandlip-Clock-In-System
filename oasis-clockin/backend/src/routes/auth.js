@@ -589,8 +589,7 @@ router.post('/clockin-direct', async (req, res) => {
     return res.status(result.statusCode || 403).json({
       success: false,
       error: result.error || 'Attendance verification failed.',
-      message: result.message || result.error || 'Attendance verification failed.',
-      noSession: !!result.noSession,
+      message: result.error || 'Attendance verification failed.',
       status: result.status,
       riskScore: result.riskScore,
       checks: result.checks,

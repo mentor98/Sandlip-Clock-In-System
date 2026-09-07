@@ -109,7 +109,20 @@ let studentPwaPath = path.join(__dirname, '../../student-pwa');
 
 if (!fs.existsSync(adminDistPath)) {
   const rootDistAdmin = path.join(__dirname, '../../../dist/admin');
-  if (fs.existsSync(rootDistAdmin)) adminDistPath = rootDistAdmin;
+  if (fs.existsSync(rootDistAdmin)) {
+    adminDistPath = rootDistAdmin;
+  } else {
+    try {
+      console.log('Building admin dashboard assets on first startup...');
+      const { execSync } = require('child_process');
+      execSync('npm run build', { cwd: path.join(__dirname, '../../../'), stdio: 'inherit' });
+      if (!fs.existsSync(adminDistPath) && fs.existsSync(rootDistAdmin)) {
+        adminDistPath = rootDistAdmin;
+      }
+    } catch (e) {
+      console.warn('Could not auto-build admin dashboard assets:', e.message);
+    }
+  }
 }
 
 if (!fs.existsSync(studentPwaPath)) {

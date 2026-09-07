@@ -500,10 +500,6 @@ async function validateAttendance(params) {
           .update({ status: 'EXPIRED', closed_at: new Date().toISOString() })
           .eq('id', activeSession.id);
       } catch (_) {}
-      activeSession = null;
-      details.session = null;
-    } else if (activeSession.status !== 'ACTIVE') {
-      activeSession = null;
       details.session = null;
     } else {
       checks.activeSession = true;
@@ -511,12 +507,6 @@ async function validateAttendance(params) {
     }
   } else {
     details.session = null;
-  }
-
-  // ── Enforce: Student cannot ClockIn if admin didn't create a session ───────
-  if (!activeSession && attendanceType === 'clock_in') {
-    criticalFailures.push('No session created');
-    securityAnomalies.push({ type: 'NO_SESSION_CREATED', severity: 'HIGH' });
   }
 
   // ── 6. GPS & Geofence proximity verification ────────────────────────────────
@@ -930,15 +920,11 @@ async function validateAndRecordAttendance(params) {
     }
 
     const isDuplicate = result.checks.duplicate || result.criticalFailures.some(f => f.includes('already'));
-    const isNoSession = result.noSession || (!result.activeSession && attendanceType === 'clock_in') || result.criticalFailures.some(f => f.toLowerCase().includes('no session'));
-    const primaryError = isNoSession ? 'No session created' : (result.criticalFailures[0] || 'Attendance verification failed.');
     return {
       success: false,
       approved: false,
-      statusCode: isDuplicate ? 409 : (isNoSession ? 400 : 403),
+      statusCode: isDuplicate ? 409 : 403,
       error: primaryError,
-      message: primaryError,
-      noSession: isNoSession,
       status: result.status,
       riskScore: result.riskScore,
       checks: result.checks,

@@ -54,8 +54,6 @@ function makeHandler(attendanceType) {
       return res.status(result.statusCode || 403).json({
         success: false,
         error: result.error || 'Attendance verification failed.',
-        message: result.message || result.error || 'Attendance verification failed.',
-        noSession: !!result.noSession,
         status: result.status,
         riskScore: result.riskScore,
         checks: result.checks,

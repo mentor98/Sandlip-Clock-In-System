@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Sandlip ClockIn System</title>
+<title>Oasis ClockIn</title>
 <meta name="description" content="Secure student attendance tracking system with passkey / WebAuthn authentication, geofencing, QR verification, absence marking, and administrative controls." />
 <meta property="og:title" content="Oasis ClockIn" />
 <meta property="og:description" content="Secure student attendance tracking system with passkey / WebAuthn authentication, geofencing, QR verification, absence marking, and administrative controls." />
@@ -32,12 +32,6 @@
         <div class="front-loc-pill">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
           <span id="front-location-status">Detecting GPS proximity…</span>
-        </div>
-
-        <!-- Live Attendance Session Status Line -->
-        <div id="front-session-status" class="front-session-pill session-inactive">
-          <span class="front-session-dot"></span>
-          <span id="front-session-text">No session created</span>
         </div>
 
         <!-- Optional Attached QR Badge -->
@@ -84,6 +78,13 @@
         <div class="first-time-footer">
           <span>First time coming?</span>
           <button id="btn-goto-register" class="btn-link-inline">Register to get your ID &amp; Clock In</button>
+        </div>
+
+        <div style="margin-top: 14px; text-align: center;">
+          <a href="/admin" style="font-size: 13px; color: #0f766e; text-decoration: none; font-weight: 500; display: inline-flex; align-items: center; gap: 5px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M14 9h4"/><path d="M14 15h4"/></svg>
+            <span>Open Administrator Dashboard</span>
+          </a>
         </div>
       </div>
     </section>
@@ -166,6 +167,10 @@
             <span class="server-status-dot online" id="home-server-dot"></span>
             <span id="home-server-label">Online</span>
           </div>
+          <a href="/admin" class="icon-btn-ghost" title="Admin Dashboard" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 4px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M14 9h4"/><path d="M14 15h4"/></svg>
+            <span>Admin</span>
+          </a>
           <button id="btn-scan" class="icon-btn" title="Scan QR Code">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             <span>Scan QR</span>
