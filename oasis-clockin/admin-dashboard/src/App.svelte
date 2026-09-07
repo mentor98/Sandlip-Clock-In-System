@@ -114,6 +114,9 @@
     white-space: nowrap !important;
     word-break: keep-all !important;
   }
+  :global(th) {
+    white-space: nowrap !important;
+  }
 
   .shell { display: flex; min-height: 100vh; }
 

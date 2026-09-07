@@ -618,7 +618,7 @@
 
   table {
     width: 100%;
-    min-width: 680px;
+    min-width: 980px;
     border-collapse: collapse;
     font-size: 13.5px;
   }
@@ -626,8 +626,14 @@
     background: #f8fafc; text-align: left; padding: 12px 20px;
     color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
     letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
   }
-  td { padding: 13px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  td {
+    padding: 13px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    white-space: nowrap;
+  }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
 
@@ -636,7 +642,17 @@
   .mono { font-family: monospace; font-size: 12px; }
   .pad-16 { padding: 24px; text-align: center; }
 
-  .actions { display: flex; gap: 6px; align-items: center; }
+  .actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    white-space: nowrap;
+    flex-wrap: nowrap;
+  }
+  .actions :global(.btn) {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 
   .pill {
     display: inline-block; padding: 3px 9px; border-radius: 999px;

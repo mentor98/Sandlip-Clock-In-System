@@ -150,13 +150,17 @@
   .filters button.active { background: #0f766e; color: white; border-color: #0f766e; }
 
   .table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
-  table { width: 100%; border-collapse: collapse; min-width: 750px; }
+  table { width: 100%; border-collapse: collapse; min-width: 900px; }
   th {
     text-align: left; padding: 12px 16px; font-size: 11.5px; font-weight: 700;
     color: #64748b; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
     text-transform: uppercase; letter-spacing: 0.04em;
+    white-space: nowrap;
   }
-  td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; color: #334155; }
+  td {
+    padding: 12px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; color: #334155;
+    white-space: nowrap;
+  }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
 

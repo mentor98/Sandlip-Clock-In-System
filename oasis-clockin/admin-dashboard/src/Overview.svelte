@@ -342,7 +342,7 @@
   }
   table {
     width: 100%;
-    min-width: 620px;
+    min-width: 820px;
     border-collapse: collapse;
     font-size: 13.5px;
   }
@@ -350,8 +350,14 @@
     background: #f8fafc; text-align: left; padding: 12px 20px;
     color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
     letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
   }
-  td { padding: 14px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  td {
+    padding: 14px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    white-space: nowrap;
+  }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
 

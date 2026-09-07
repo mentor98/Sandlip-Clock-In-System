@@ -24,8 +24,9 @@
     } catch {}
   }
 
-  async function load() {
-    loading = true; error = '';
+  async function load(showSpinner = false) {
+    if (showSpinner || records.length === 0) loading = true;
+    error = '';
     try {
       const params = new URLSearchParams();
       if (filterFrom) params.set('from', filterFrom);
@@ -50,9 +51,9 @@
   }
 
   loadLocations();
-  load();
+  load(true);
 
-  const unsubAttendance = subscribeTable('attendance', '*', () => load());
+  const unsubAttendance = subscribeTable('attendance', '*', () => load(false));
   onDestroy(() => unsubAttendance());
 
   function typeLabel(t) { return t === 'clock_in' ? 'Clock In' : 'Clock Out'; }
@@ -152,7 +153,7 @@
 
   <!-- Table -->
   <div class="table-wrap">
-    {#if loading}
+    {#if loading && records.length === 0}
       <p class="muted center pad-24">Loading attendance logs…</p>
     {:else if records.length === 0}
       <div class="empty-state">
@@ -271,7 +272,7 @@
   }
   table {
     width: 100%;
-    min-width: 780px;
+    min-width: 1060px;
     border-collapse: collapse;
     font-size: 13.5px;
   }
@@ -279,8 +280,14 @@
     background: #f8fafc; text-align: left; padding: 12px 20px;
     color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
     letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
   }
-  td { padding: 13px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  td {
+    padding: 13px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    white-space: nowrap;
+  }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
 

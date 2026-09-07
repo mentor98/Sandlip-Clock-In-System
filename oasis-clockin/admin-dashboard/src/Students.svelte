@@ -40,18 +40,19 @@
 
   let newName = '', newId = '', newEmail = '';
 
-  async function load() {
-    loading = true; error = '';
+  async function load(showSpinner = false) {
+    if (showSpinner || students.length === 0) loading = true;
+    error = '';
     try {
       const res = await api(`/admin/students${search ? `?search=${encodeURIComponent(search)}` : ''}`);
       students = res.students || [];
     } catch (e) { error = e.message; }
     finally { loading = false; }
   }
-  load();
+  load(true);
 
-  const unsubDevices = subscribeTable('devices', '*', () => load());
-  const unsubStudents = subscribeTable('students', '*', () => load());
+  const unsubDevices = subscribeTable('devices', '*', () => load(false));
+  const unsubStudents = subscribeTable('students', '*', () => load(false));
   onDestroy(() => { unsubDevices(); unsubStudents(); });
 
   async function addStudent() {
@@ -307,7 +308,7 @@
 
   <!-- Table -->
   <div class="table-wrap">
-    {#if loading}
+    {#if loading && students.length === 0}
       <p class="muted center pad-24">Loading student directory…</p>
     {:else if students.length === 0}
       <div class="empty-state">
@@ -476,7 +477,7 @@
   }
   table {
     width: 100%;
-    min-width: 1040px;
+    min-width: 1080px;
     border-collapse: collapse;
     font-size: 13.5px;
   }
@@ -486,7 +487,12 @@
     letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
     white-space: nowrap;
   }
-  td { padding: 13px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  td {
+    padding: 13px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    white-space: nowrap;
+  }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
   tr.dimmed { opacity: 0.6; }

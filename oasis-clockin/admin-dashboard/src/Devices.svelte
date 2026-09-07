@@ -12,8 +12,9 @@
   let copiedResetLink = false;
   let loading = false;
 
-  async function load() {
-    loading = true; error = '';
+  async function load(showSpinner = false) {
+    if (showSpinner || devices.length === 0) loading = true;
+    error = '';
     try {
       const params = filter !== 'ALL' ? `?status=${filter}` : '';
       const res = await api(`/admin/devices${params}`);
@@ -21,9 +22,9 @@
     } catch (e) { error = e.message; }
     finally { loading = false; }
   }
-  load();
+  load(true);
 
-  const unsub = subscribeTable('devices', '*', load);
+  const unsub = subscribeTable('devices', '*', () => load(false));
   onDestroy(() => unsub());
 
   async function authorize(d) {
@@ -31,7 +32,7 @@
     try {
       await api(`/admin/devices/${d.id}/authorize`, { method: 'PATCH' });
       successMsg = `Device authorized for ${d.students?.full_name}.`;
-      load();
+      load(false);
     } catch (e) { error = e.message; }
   }
 
@@ -41,7 +42,7 @@
     try {
       await api(`/admin/devices/${d.id}/revoke`, { method: 'PATCH' });
       successMsg = `Device revoked.`;
-      load();
+      load(false);
     } catch (e) { error = e.message; }
   }
 
@@ -53,7 +54,7 @@
       const res = await api(`/admin/students/${studentId}/reset-device`, { method: 'POST' });
       resetLink = res.registrationLink;
       successMsg = `Device successfully reset for ${d.students?.full_name || 'student'}. Share the new registration link below.`;
-      load();
+      load(false);
     } catch (e) { error = e.message; }
   }
 
@@ -70,7 +71,7 @@
     try {
       await api(`/admin/devices/${d.id}/block`, { method: 'PATCH' });
       successMsg = `Device blocked.`;
-      load();
+      load(false);
     } catch (e) { error = e.message; }
   }
 
@@ -79,7 +80,7 @@
     try {
       await api(`/admin/devices/${d.id}/reactivate`, { method: 'PATCH' });
       successMsg = `Device reactivated.`;
-      load();
+      load(false);
     } catch (e) { error = e.message; }
   }
 
@@ -149,7 +150,7 @@
   {/if}
 
   <div class="table-wrap">
-    {#if loading}
+    {#if loading && devices.length === 0}
       <p class="muted center pad-24">Loading device inventory…</p>
     {:else if devices.length === 0}
       <div class="empty-state">
@@ -273,7 +274,7 @@
   }
   table {
     width: 100%;
-    min-width: 680px;
+    min-width: 1120px;
     border-collapse: collapse;
     font-size: 13.5px;
   }
@@ -281,8 +282,14 @@
     background: #f8fafc; text-align: left; padding: 12px 20px;
     color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
     letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
   }
-  td { padding: 13px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  td {
+    padding: 13px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    white-space: nowrap;
+  }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
   tr.dimmed { opacity: 0.6; }
@@ -298,22 +305,31 @@
   .plat-chip {
     display: inline-flex; align-items: center; gap: 6px;
     font-size: 12.5px; font-weight: 500; color: #334155;
+    white-space: nowrap;
   }
 
   .pill {
     display: inline-block; padding: 3px 9px; border-radius: 999px;
     font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    white-space: nowrap;
   }
   .pill-auth { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
   .pill-pending { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
   .pill-revoked { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
   .pill-blocked { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 
-  .actions { display: flex; gap: 6px; align-items: center; }
+  .actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
 
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     border: none; cursor: pointer; font-weight: 600; transition: all 0.15s;
+    white-space: nowrap; flex-shrink: 0;
   }
   .btn-sm { padding: 5px 11px; font-size: 12px; border-radius: 6px; }
   .btn.ghost { background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
