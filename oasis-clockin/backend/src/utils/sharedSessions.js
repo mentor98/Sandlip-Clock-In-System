@@ -104,7 +104,9 @@ async function ensureValidLocation(preferredId) {
   return { id: cleanId, name: locName };
 }
 
-async function generateSessionQrPayload(session, adminIp, adminId) {
+async function generateSessionQrPayload(session, adminIp, adminId, options = {}) {
+  const autoRotate = typeof options === 'boolean' ? options : (options && options.autoRotate !== false);
+  const ttlSeconds = autoRotate ? parseInt(process.env.QR_TOKEN_TTL_SECONDS || '25', 10) : 86400;
   const sessionId = session.id;
   const locationId = session.location_id || 'c0000000-0000-0000-0000-000000000001';
   const locationName = session.locations?.name || 'Sandlip Oasis Campus';
@@ -138,6 +140,7 @@ async function generateSessionQrPayload(session, adminIp, adminId) {
     adminId,
     adminIp,
     sessionId,
+    ttlSeconds,
   });
 
   const pwaBase = process.env.RP_ORIGIN_PWA || '';
@@ -162,7 +165,8 @@ async function generateSessionQrPayload(session, adminIp, adminId) {
     location_name: locationName,
     nonce,
     admin_ip: adminIp,
-    expires_in_seconds: parseInt(process.env.QR_TOKEN_TTL_SECONDS || '25', 10),
+    auto_rotate: autoRotate,
+    expires_in_seconds: ttlSeconds,
   };
 }
 

@@ -101,7 +101,12 @@ function normalizeOrGenerateMac(mac) {
   if (mac && /^[0-9A-Fa-f:]{11,17}$/.test(String(mac).trim())) {
     return String(mac).trim().toUpperCase();
   }
-  return 'BE:64:B4:14:4D:67';
+  const bytes = [];
+  bytes.push((Math.floor(Math.random() * 256) & 0xfe) | 0x02);
+  for (let i = 1; i < 6; i++) {
+    bytes.push(Math.floor(Math.random() * 256));
+  }
+  return bytes.map(b => b.toString(16).padStart(2, '0')).join(':').toUpperCase();
 }
 
 // POST /api/auth/register
@@ -116,6 +121,58 @@ router.post('/register', async (req, res) => {
   const cleanName = String(full_name).trim();
   const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '192.168.1.156';
   const clientMac = normalizeOrGenerateMac(device_mac);
+
+  // ── DEVICE BINDING ENFORCEMENT: Strictly 1 Student Account per Physical Device ──
+  // Check if this device MAC is already registered/bound to another student account
+  if (clientMac) {
+    // 1. Check if another student has this MAC registered in 'students'
+    const { data: allStudents } = await supabaseAdmin
+      .from('students')
+      .select('id, student_id, full_name, registered_mac');
+
+    if (allStudents && Array.isArray(allStudents)) {
+      const conflictStudent = allStudents.find((s) => {
+        const sameMac = s.registered_mac && s.registered_mac.toUpperCase() === clientMac.toUpperCase();
+        const differentStudent = s.student_id && s.student_id.toLowerCase() !== cleanId.toLowerCase();
+        return sameMac && differentStudent;
+      });
+
+      if (conflictStudent) {
+        return res.status(403).json({
+          error: `Device Restriction: This device is already bound to student "${conflictStudent.full_name}" (${conflictStudent.student_id}). Each physical device can only be used by one student. Another student cannot create an account on this device.`,
+          code: 'DEVICE_ALREADY_BOUND',
+          bound_student_name: conflictStudent.full_name,
+          bound_student_id: conflictStudent.student_id,
+        });
+      }
+    }
+
+    // 2. Check if another student has an active device record with this MAC in 'devices'
+    const { data: allDevices } = await supabaseAdmin
+      .from('devices')
+      .select('id, student_id, mac_address, status, revoked_at, students(id, student_id, full_name)')
+      .is('revoked_at', null);
+
+    if (allDevices && Array.isArray(allDevices)) {
+      const conflictDevice = allDevices.find((d) => {
+        const sameMac = d.mac_address && d.mac_address.toUpperCase() === clientMac.toUpperCase();
+        const conflictSid = d.students?.student_id;
+        const differentStudent = conflictSid && conflictSid.toLowerCase() !== cleanId.toLowerCase();
+        return sameMac && differentStudent;
+      });
+
+      if (conflictDevice) {
+        const ownerName = conflictDevice.students?.full_name || 'Another Student';
+        const ownerId = conflictDevice.students?.student_id || 'Registered Student';
+        return res.status(403).json({
+          error: `Device Restriction: This hardware device is already registered to "${ownerName}" (${ownerId}). Each device can only create and bind a single student account.`,
+          code: 'DEVICE_ALREADY_BOUND',
+          bound_student_name: ownerName,
+          bound_student_id: ownerId,
+        });
+      }
+    }
+  }
 
   let student;
   const { data: existing } = await supabaseAdmin

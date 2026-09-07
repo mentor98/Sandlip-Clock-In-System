@@ -26,10 +26,25 @@ const state = {
   originScreenBeforeScan: 'screen-signin',
 };
 
+function generateRandomMac() {
+  const hex = '0123456789ABCDEF';
+  let mac = '';
+  for (let i = 0; i < 6; i++) {
+    let b1 = hex[Math.floor(Math.random() * 16)];
+    let b2 = hex[Math.floor(Math.random() * 16)];
+    if (i === 0) {
+      b2 = '26AE'[Math.floor(Math.random() * 4)];
+    }
+    mac += (i > 0 ? ':' : '') + b1 + b2;
+  }
+  return mac;
+}
+
 function getOrCreateDeviceMac() {
   let mac = localStorage.getItem('oasis_device_mac');
-  if (!mac || !/^[0-9A-Fa-f:]{17}$/.test(mac)) {
-    mac = 'be:64:b4:14:4d:67';
+  const isDefaultOrInvalid = !mac || !/^[0-9A-Fa-f:]{17}$/.test(mac) || (mac.toLowerCase() === 'be:64:b4:14:4d:67' && !localStorage.getItem('oasis_student_id'));
+  if (isDefaultOrInvalid) {
+    mac = generateRandomMac();
     localStorage.setItem('oasis_device_mac', mac);
   }
   return mac;
@@ -531,6 +546,14 @@ document.getElementById('btn-register').onclick = async () => {
   const email = document.getElementById('reg-email').value.trim();
   if (!full_name || !student_id || !email) { setError(errEl, 'Please fill in all fields.'); return; }
 
+  // 1-Device-per-student check: Ensure this device hasn't already registered a different student
+  const boundSid = localStorage.getItem('oasis_bound_device_student_id');
+  const boundName = localStorage.getItem('oasis_bound_device_student_name');
+  if (boundSid && boundSid.toLowerCase() !== student_id.toLowerCase()) {
+    setError(errEl, `Device Restriction: This device is already bound to student account "${boundName || boundSid}" (${boundSid}). Each physical device can only be used by one student. Another user cannot create an account on this same device.`);
+    return;
+  }
+
   const btn = document.getElementById('btn-register');
   btn.disabled = true;
   btn.innerHTML = `<span>Registering Device &amp; Hardware MAC…</span>`;
@@ -547,6 +570,8 @@ document.getElementById('btn-register').onclick = async () => {
     saveSession({ sessionToken: activeToken, deviceId: regRes.deviceId || 'default-device-id' });
     localStorage.setItem('oasis_student_id', student_id);
     localStorage.setItem('oasis_student_name', full_name);
+    localStorage.setItem('oasis_bound_device_student_id', student_id);
+    localStorage.setItem('oasis_bound_device_student_name', full_name);
     state.studentId = student_id;
     state.studentName = full_name;
 

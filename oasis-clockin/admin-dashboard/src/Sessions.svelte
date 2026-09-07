@@ -202,32 +202,47 @@
     }
   }
 
-  async function generateLiveQr(s) {
+  async function generateLiveQr(s, withAutoRotate = autoRotate) {
     qrGenerating = true;
     error = '';
     clearInterval(qrTimer);
+    qrTimer = null;
     try {
       let res;
       try {
-        res = await api(`/admin/sessions/${s.id}/generate-qr`, { method: 'POST' });
+        res = await api(`/admin/sessions/${s.id}/generate-qr`, {
+          method: 'POST',
+          body: { auto_rotate: withAutoRotate },
+        });
       } catch (_e1) {
-        res = await api(`/sessions/${s.id}/generate-qr`, { method: 'POST' });
+        res = await api(`/sessions/${s.id}/generate-qr`, {
+          method: 'POST',
+          body: { auto_rotate: withAutoRotate },
+        });
       }
       qrSrc = `data:image/png;base64,${res.qr_png_base64}`;
-      qrExpiry = res.expires_in_seconds || 25;
       qrAdminIp = res.admin_ip || '127.0.0.1';
 
-      qrTimer = setInterval(() => {
-        qrExpiry -= 1;
-        if (qrExpiry <= 0) {
-          clearInterval(qrTimer);
-          if (autoRotate && qrSession) {
-            generateLiveQr(qrSession);
-          } else {
-            qrSrc = '';
+      if (withAutoRotate) {
+        qrExpiry = res.expires_in_seconds || 25;
+        qrTimer = setInterval(() => {
+          if (!autoRotate) {
+            clearInterval(qrTimer);
+            qrTimer = null;
+            return;
           }
-        }
-      }, 1000);
+          qrExpiry -= 1;
+          if (qrExpiry <= 0) {
+            clearInterval(qrTimer);
+            qrTimer = null;
+            if (autoRotate && qrSession) {
+              generateLiveQr(qrSession, true);
+            }
+          }
+        }, 1000);
+      } else {
+        qrExpiry = 0;
+      }
     } catch (e) {
       error = e.message;
     } finally {
@@ -235,8 +250,26 @@
     }
   }
 
+  async function toggleAutoRotate() {
+    autoRotate = !autoRotate;
+    if (autoRotate) {
+      // Re-enabled auto-rotate: generate dynamic QR and start 25s loop
+      if (qrSession) {
+        await generateLiveQr(qrSession, true);
+      }
+    } else {
+      // Paused auto-rotate: stop countdown and keep a static QR code active
+      clearInterval(qrTimer);
+      qrTimer = null;
+      if (qrSession) {
+        await generateLiveQr(qrSession, false);
+      }
+    }
+  }
+
   function closeLiveQr() {
     clearInterval(qrTimer);
+    qrTimer = null;
     clearInterval(autoRefreshTimer);
     if (liveSse) {
       liveSse.close();
@@ -306,19 +339,26 @@
         <div class="projector-body">
           <div class="qr-col">
             <div class="qr-box">
-              {#if qrSrc && qrExpiry > 0}
-                <img src={qrSrc} alt="Classroom Dynamic QR Code" class="qr-image-lg" />
-                <div class="countdown-bar-wrap">
-                  <div class="countdown-bar" style="width: {(qrExpiry / 25) * 100}%"></div>
-                </div>
-                <div class="expiry-indicator">
-                  <Icon name="refresh" size={14} />
-                  <span>Rotating dynamically in <strong>{qrExpiry}s</strong></span>
-                </div>
+              {#if qrSrc}
+                <img src={qrSrc} alt="Classroom QR Code" class="qr-image-lg" />
+                {#if autoRotate && qrExpiry > 0}
+                  <div class="countdown-bar-wrap">
+                    <div class="countdown-bar" style="width: {(Math.max(0, qrExpiry) / 25) * 100}%"></div>
+                  </div>
+                  <div class="expiry-indicator rotating">
+                    <Icon name="refresh" size={14} />
+                    <span>Auto-rotating dynamically in <strong>{qrExpiry}s</strong></span>
+                  </div>
+                {:else if !autoRotate}
+                  <div class="expiry-indicator paused">
+                    <Icon name="pause" size={13} color="#b45309" />
+                    <span>Auto-rotation <strong>Paused</strong> · Static QR</span>
+                  </div>
+                {/if}
               {:else}
                 <div class="qr-placeholder">
                   <Icon name="clock" size={40} color="#94a3b8" />
-                  <p>Rotating token…</p>
+                  <p>{qrGenerating ? 'Generating QR code…' : 'No QR available'}</p>
                 </div>
               {/if}
             </div>
@@ -330,7 +370,7 @@
               </div>
               <div class="sec-row">
                 <Icon name="smartphone" size={14} color="#0284c7" />
-                <span>Device MAC / Hardware ID Bound & Checked</span>
+                <span>Device MAC / Hardware ID Bound &amp; Checked</span>
               </div>
               <div class="sec-row">
                 <Icon name="map-pin" size={14} color="#0f766e" />
@@ -339,14 +379,24 @@
             </div>
 
             <div class="projector-controls">
-              <button class="btn btn-sm btn-primary" on:click={() => generateLiveQr(qrSession)} disabled={qrGenerating}>
+              <button class="btn btn-sm btn-primary" on:click={() => generateLiveQr(qrSession, autoRotate)} disabled={qrGenerating}>
                 <Icon name="refresh" size={13} />
                 <span>{qrGenerating ? 'Rotating…' : 'Rotate QR Now'}</span>
               </button>
-              <label class="toggle-label">
-                <input type="checkbox" bind:checked={autoRotate} />
-                <span>Auto-rotate (25s)</span>
-              </label>
+              <button
+                type="button"
+                class="toggle-switch-btn {autoRotate ? 'on' : 'off'}"
+                on:click={toggleAutoRotate}
+                aria-pressed={autoRotate}
+                title={autoRotate ? 'Click to stop dynamic auto-rotation' : 'Click to resume dynamic auto-rotation (25s)'}
+              >
+                <span class="switch-slider">
+                  <span class="switch-knob"></span>
+                </span>
+                <span class="switch-text">
+                  Auto-rotate: <strong>{autoRotate ? '25s' : 'Off'}</strong>
+                </span>
+              </button>
             </div>
           </div>
 
@@ -721,6 +771,13 @@
   .expiry-indicator {
     display: flex; align-items: center; gap: 6px; font-size: 12px; color: #475569; font-weight: 600;
   }
+  .expiry-indicator.paused {
+    background: #fffbeb;
+    color: #92400e;
+    border: 1px solid #fde68a;
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
   .security-meta-card {
     background: white; border-radius: 10px; padding: 12px 14px;
     border: 1px solid #e2e8f0; font-size: 11.5px; width: 100%; max-width: 320px;
@@ -730,10 +787,63 @@
   .sec-row code { font-size: 11px; background: #f1f5f9; padding: 1px 4px; border-radius: 4px; }
 
   .projector-controls {
-    display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 320px;
+    display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 320px; gap: 10px;
   }
-  .toggle-label {
-    display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer;
+  .toggle-switch-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #475569;
+    transition: all 0.2s ease;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .toggle-switch-btn:hover {
+    border-color: #94a3b8;
+    background: #f1f5f9;
+  }
+  .toggle-switch-btn.on {
+    background: #ecfdf5;
+    border-color: #86efac;
+    color: #065f46;
+  }
+  .toggle-switch-btn.off {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #92400e;
+  }
+  .switch-slider {
+    width: 28px;
+    height: 16px;
+    background: #cbd5e1;
+    border-radius: 999px;
+    position: relative;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+  }
+  .toggle-switch-btn.on .switch-slider {
+    background: #10b981;
+  }
+  .switch-knob {
+    width: 12px;
+    height: 12px;
+    background: white;
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  }
+  .toggle-switch-btn.on .switch-knob {
+    transform: translateX(12px);
   }
 
   .scans-col {

@@ -269,6 +269,7 @@ router.post('/:id/generate-qr', async (req, res) => {
     req.ip ||
     req.socket?.remoteAddress ||
     '127.0.0.1';
+  const autoRotate = req.body?.auto_rotate !== false;
 
   const session = await findSession(sessionId);
   if (!session) {
@@ -276,7 +277,7 @@ router.post('/:id/generate-qr', async (req, res) => {
   }
 
   try {
-    const payload = await generateSessionQrPayload(session, adminIp, req.user?.sub);
+    const payload = await generateSessionQrPayload(session, adminIp, req.user?.sub, { autoRotate });
     res.json(payload);
   } catch (err) {
     console.error('Session QR generation error:', err);
