@@ -177,7 +177,7 @@
           {#each records as r}
             <tr>
               <td class="bold">{r.students?.full_name || '—'}</td>
-              <td><code>{r.students?.student_id || '—'}</code></td>
+              <td class="nowrap-cell"><code>{r.students?.student_id || '—'}</code></td>
               <td>{r.locations?.name || '—'}</td>
               <td><span class="pill {typeClass(r.type)}">{typeLabel(r.type)}</span></td>
               <td>
@@ -284,6 +284,7 @@
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
 
+  .nowrap-cell { white-space: nowrap; }
   .bold { font-weight: 600; color: #0f172a; }
   .muted { color: #94a3b8; }
   .mono { font-family: monospace; font-size: 12px; }

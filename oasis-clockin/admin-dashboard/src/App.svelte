@@ -110,6 +110,10 @@
     color: #0f172a;
     -webkit-font-smoothing: antialiased;
   }
+  :global(code) {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+  }
 
   .shell { display: flex; min-height: 100vh; }
 

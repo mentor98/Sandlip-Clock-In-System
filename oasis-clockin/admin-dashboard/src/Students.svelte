@@ -331,11 +331,11 @@
           {#each students as s}
             <tr class:dimmed={s.status === 'suspended'}>
               <td class="bold">{s.full_name}</td>
-              <td><code>{s.student_id}</code></td>
-              <td class="mono">
+              <td class="nowrap-cell"><code class="sid-code">{s.student_id}</code></td>
+              <td class="mono nowrap-cell">
                 <code>{s.registered_mac || (s.devices?.[0]?.mac_address) || '—'}</code>
               </td>
-              <td class="mono">
+              <td class="mono nowrap-cell">
                 <span class="ip-chip">{s.registered_ip || (s.devices?.[0]?.ip_address) || '—'}</span>
               </td>
               <td class="nowrap-cell">
@@ -344,7 +344,7 @@
                   <span>{activeDevices(s).length}&nbsp;device{activeDevices(s).length !== 1 ? 's' : ''}</span>
                 </button>
               </td>
-              <td>
+              <td class="nowrap-cell">
                 <span class="pill {s.status === 'suspended' ? 'pill-suspended' : 'pill-active'}">
                   {s.status === 'suspended' ? 'Suspended' : 'Active'}
                 </span>
@@ -476,7 +476,7 @@
   }
   table {
     width: 100%;
-    min-width: 980px;
+    min-width: 1040px;
     border-collapse: collapse;
     font-size: 13.5px;
   }
@@ -490,6 +490,19 @@
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
   tr.dimmed { opacity: 0.6; }
+
+  code {
+    white-space: nowrap;
+    word-break: keep-all;
+    display: inline-block;
+  }
+
+  .sid-code {
+    white-space: nowrap;
+    word-break: keep-all;
+    font-weight: 600;
+    display: inline-block;
+  }
 
   .bold { font-weight: 600; color: #0f172a; }
   .muted { color: #94a3b8; }

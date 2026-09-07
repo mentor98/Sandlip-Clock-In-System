@@ -176,7 +176,7 @@
             {@const plat = getPlatformInfo(d.user_agent)}
             <tr class:dimmed={d.status === 'REVOKED' || d.status === 'BLOCKED'}>
               <td class="bold">{d.students?.full_name || '—'}</td>
-              <td><code>{d.students?.student_id || '—'}</code></td>
+              <td class="nowrap-cell"><code>{d.students?.student_id || '—'}</code></td>
               <td>
                 <span class="plat-chip">
                   <Icon name={plat.icon} size={14} />
@@ -287,6 +287,7 @@
   tr:hover td { background: #fafcff; }
   tr.dimmed { opacity: 0.6; }
 
+  .nowrap-cell { white-space: nowrap; }
   .bold { font-weight: 600; color: #0f172a; }
   .muted { color: #94a3b8; }
   .mono { font-family: monospace; font-size: 12px; }
