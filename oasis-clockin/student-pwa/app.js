@@ -24,6 +24,7 @@ const state = {
   clockedIn: false,
   clockedOut: false,
   originScreenBeforeScan: 'screen-signin',
+  activeSession: null,
 };
 
 function generateRandomMac() {
@@ -89,13 +90,18 @@ function setError(elId, msg, isSuccess = false) {
 
 function clearError(elId) { setError(elId, ''); }
 
-function showSigninAlert(msg, attemptedId = '') {
+function showSigninAlert(msg, attemptedId = '', isSessionAlert = false) {
   const box = document.getElementById('signin-alert-box');
   const text = document.getElementById('signin-error-text');
+  const regBtn = document.getElementById('btn-prompt-register');
   if (box && text) {
     text.textContent = msg;
     box.style.display = 'flex';
     box.dataset.attemptedId = attemptedId;
+    if (regBtn) {
+      const isSession = isSessionAlert || msg.toLowerCase().includes('no session');
+      regBtn.style.display = (isSession || !attemptedId) ? 'none' : 'inline-flex';
+    }
   }
 }
 
@@ -221,7 +227,15 @@ function performLocalVerifiedAttendance(payload) {
     }
   }
 
-  // 2. Check local single-scan duplicate
+  // 2. Enforce active session check for clock_in
+  if (!state.activeSession && payload.attendance_type !== 'clock_out') {
+    const err = new Error('No session created');
+    err.status = 400;
+    err.data = { noSession: true, error: 'No session created' };
+    throw err;
+  }
+
+  // 3. Check local single-scan duplicate
   const todayStr = new Date().toISOString().slice(0, 10);
   const sessKey = payload.session_id || (payload.location_token ? payload.location_token.slice(0, 24) : todayStr);
   const duplicateKey = `${student.student_id}:${sessKey}`;
@@ -565,7 +579,13 @@ if (btnFrontClearQr) {
 // Front Scan button
 const btnFrontScan = document.getElementById('btn-front-scan');
 if (btnFrontScan) {
-  btnFrontScan.onclick = () => {
+  btnFrontScan.onclick = async () => {
+    hideSigninAlert();
+    await loadSession();
+    if (!state.activeSession) {
+      showSigninAlert('No session created', '', true);
+      return;
+    }
     state.originScreenBeforeScan = 'screen-signin';
     showScreen('screen-scan');
     startScanner();
@@ -657,9 +677,18 @@ async function doDirectClockIn(student_id) {
   const btn = document.getElementById('btn-signin');
   const btnText = document.getElementById('btn-signin-text');
   btn.disabled = true;
-  if (btnText) btnText.textContent = 'Clocking In…';
+  if (btnText) btnText.textContent = 'Checking session…';
 
   try {
+    // 1. Verify active attendance session exists
+    await loadSession();
+    if (!state.activeSession) {
+      showSigninAlert('No session created', '', true);
+      return;
+    }
+
+    if (btnText) btnText.textContent = 'Clocking In…';
+
     // Obtain live GPS proximity
     state.lastLocation = await getPosition();
 
@@ -688,8 +717,19 @@ async function doDirectClockIn(student_id) {
       if (apiErr.status === 409 || (apiErr.data && apiErr.data.alreadyScanned)) {
         throw apiErr; // Legitimate duplicate scan
       }
+      if (apiErr.data?.noSession || (apiErr.data?.error && apiErr.data.error.toLowerCase().includes('no session')) || (apiErr.message && apiErr.message.toLowerCase().includes('no session'))) {
+        throw apiErr; // Legitimate no session created
+      }
       console.warn('Backend connection unavailable, switching to local verified clock-in:', apiErr.message);
       res = performLocalVerifiedAttendance(payload);
+    }
+
+    // If server rejected due to no session
+    if (res.noSession || (res.error && res.error.toLowerCase().includes('no session')) || (res.message && res.message.toLowerCase().includes('no session'))) {
+      state.activeSession = null;
+      updateSessionDisplay();
+      showSigninAlert('No session created', '', true);
+      return;
     }
 
     // Save session
@@ -742,7 +782,11 @@ async function doDirectClockIn(student_id) {
     console.error('Clockin error:', err);
     const data = err.data || {};
 
-    if (err.status === 404 || data.notFound) {
+    if (data.noSession || (data.error && data.error.toLowerCase().includes('no session')) || (err.message && err.message.toLowerCase().includes('no session'))) {
+      state.activeSession = null;
+      updateSessionDisplay();
+      showSigninAlert('No session created', '', true);
+    } else if (err.status === 404 || data.notFound) {
       // First time student! Show registration callout
       showSigninAlert(`Student ID "${student_id}" is not registered. Coming for the first time? Please register to get your ID and clock in.`, student_id);
     } else {
@@ -962,21 +1006,47 @@ function applyClockButtonState() {
   }
 }
 
+function updateSessionDisplay() {
+  const session = state.activeSession;
+
+  // 1. Update front screen pill
+  const frontPill = document.getElementById('front-session-status');
+  const frontText = document.getElementById('front-session-text');
+  if (frontPill && frontText) {
+    if (session) {
+      frontPill.className = 'front-session-pill session-active';
+      const locName = session.locations?.name ? ` · ${session.locations.name}` : '';
+      frontText.textContent = `Active Session: ${session.title}${locName}`;
+    } else {
+      frontPill.className = 'front-session-pill session-inactive';
+      frontText.textContent = 'No session created';
+    }
+  }
+
+  // 2. Update home screen banner
+  const banner = document.getElementById('session-banner');
+  if (banner) {
+    if (session) {
+      banner.innerHTML = `<span class="session-dot"></span> <div><strong>${session.title}</strong> is active at <em>${session.locations?.name || 'Campus'}</em></div>`;
+      banner.className = 'session-banner';
+      banner.style.display = 'flex';
+    } else {
+      banner.innerHTML = `<span class="session-dot inactive"></span> <div><strong>No session created</strong> · Admin has not opened an active attendance session</div>`;
+      banner.className = 'session-banner session-inactive';
+      banner.style.display = 'flex';
+    }
+  }
+}
+
 async function loadSession() {
   try {
-    const { session } = await api('/sessions/active');
-    const el = document.getElementById('session-banner');
-    if (!el) return;
-    if (session) {
-      el.innerHTML = `<span class="session-dot"></span> <div><strong>${session.title}</strong> is active at <em>${session.locations?.name || 'Campus'}</em></div>`;
-      el.className = 'session-banner';
-      el.style.display = 'flex';
-    } else {
-      el.innerHTML = '<span>No active attendance session right now.</span>';
-      el.className = 'session-banner session-inactive';
-      el.style.display = 'flex';
-    }
-  } catch { /* not fatal */ }
+    const res = await api('/sessions/active', { auth: false, timeoutMs: 3000 });
+    state.activeSession = res?.session || null;
+  } catch (err) {
+    console.warn('Session query notice:', err.message);
+  }
+  updateSessionDisplay();
+  return state.activeSession;
 }
 
 async function loadHistory() {
@@ -1108,6 +1178,20 @@ document.getElementById('btn-clock').onclick = async () => {
   const btn = document.getElementById('btn-clock');
   const btnText = document.getElementById('btn-clock-text');
 
+  if (type === 'clock-in') {
+    await loadSession();
+    if (!state.activeSession) {
+      setError(errEl, 'No session created');
+      showVerificationCard({
+        status: 'REJECTED',
+        score: 0,
+        message: 'No session created. An administrator must create an active session before students can clock in.',
+        checks: { activeSession: false },
+      });
+      return;
+    }
+  }
+
   btn.disabled = true;
   btnText.textContent = 'Locating GPS…';
 
@@ -1206,6 +1290,16 @@ document.getElementById('btn-clock').onclick = async () => {
           validQr: true,
           activeSession: true,
         },
+      });
+    } else if (data.noSession || errMsg.toLowerCase().includes('no session')) {
+      state.activeSession = null;
+      updateSessionDisplay();
+      setError(errEl, 'No session created');
+      showVerificationCard({
+        status: 'REJECTED',
+        score: 0,
+        message: 'No session created',
+        checks: { activeSession: false },
       });
     } else {
       showVerificationCard({
@@ -1755,6 +1849,27 @@ async function handleQrScanned(data) {
   if (descGeo) descGeo.textContent = 'Resolving GPS perimeter & geofence radius…';
 
   try {
+    // 1. Verify session exists if clocking in
+    if (attendance_type === 'clock_in') {
+      await loadSession();
+      if (!state.activeSession) {
+        clearTimeout(safetyTimer);
+        playScanChirp(false);
+        if (badgeQr) { badgeQr.className = 'hud-badge err'; badgeQr.textContent = 'NO SESSION'; }
+        if (iconQr) iconQr.className = 'hud-step-icon err';
+        if (titleEl) titleEl.textContent = 'No session created';
+        if (bannerEl) {
+          bannerEl.className = 'hud-banner failed';
+          bannerEl.textContent = 'No session created';
+        }
+        setTimeout(() => {
+          isScanningValidationActive = false;
+          startScanner();
+        }, 3500);
+        return;
+      }
+    }
+
     // Fast GPS retrieval (never hangs)
     state.lastLocation = await getPosition();
 
@@ -1946,7 +2061,21 @@ async function handleQrScanned(data) {
       if (iconGeo) iconGeo.className = 'hud-step-icon ok';
     }
 
-    if (isDuplicate) {
+    const isNoSession = data.noSession ||
+      (data.error && data.error.toLowerCase().includes('no session')) ||
+      (err.message && err.message.toLowerCase().includes('no session'));
+
+    if (isNoSession) {
+      state.activeSession = null;
+      updateSessionDisplay();
+      if (badgeQr) { badgeQr.className = 'hud-badge err'; badgeQr.textContent = 'NO SESSION'; }
+      if (iconQr) iconQr.className = 'hud-step-icon err';
+      if (titleEl) titleEl.textContent = 'No session created';
+      if (bannerEl) {
+        bannerEl.className = 'hud-banner failed';
+        bannerEl.textContent = 'No session created';
+      }
+    } else if (isDuplicate) {
       if (badgeQr) { badgeQr.className = 'hud-badge err'; badgeQr.textContent = 'REUSED'; }
       if (iconQr) iconQr.className = 'hud-step-icon err';
       if (titleEl) titleEl.textContent = 'Single Scan Enforced';
@@ -2169,6 +2298,17 @@ setInterval(updateServerStatusPill, 30000);
     clearError('register-error');
     return;
   }
+
+  // Load active session immediately on startup and poll continuously
+  loadSession().catch(() => {});
+  setInterval(() => {
+    loadSession().catch(() => {});
+  }, 4000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      loadSession().catch(() => {});
+    }
+  });
 
   if (state.sessionToken) {
     try {

@@ -84,8 +84,8 @@ router.get('/:id/stream', (req, res) => {
   });
 });
 
-// GET /api/sessions/active — student polls this to know if a session is open
-router.get('/active', requireAuth, async (_req, res) => {
+// GET /api/sessions/active — student polls this to know if a session is open (public for clock-in portal)
+router.get('/active', async (_req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('attendance_sessions')
@@ -97,13 +97,30 @@ router.get('/active', requireAuth, async (_req, res) => {
       .single();
 
     if (!error && data) {
-      return res.json({ session: data });
+      if (data.ends_at && new Date(data.ends_at) < new Date()) {
+        try {
+          await supabaseAdmin
+            .from('attendance_sessions')
+            .update({ status: 'EXPIRED', closed_at: new Date().toISOString() })
+            .eq('id', data.id);
+        } catch (_) {}
+      } else {
+        return res.json({ session: data });
+      }
     }
   } catch (err) {
     console.warn('Active session query notice:', err.message);
   }
 
-  const active = inMemorySessions.find((s) => s.status === 'ACTIVE') || null;
+  const active = inMemorySessions.find((s) => {
+    if (s.status !== 'ACTIVE') return false;
+    if (s.ends_at && new Date(s.ends_at) < new Date()) {
+      s.status = 'EXPIRED';
+      return false;
+    }
+    return true;
+  }) || null;
+
   res.json({ session: active });
 });
 
