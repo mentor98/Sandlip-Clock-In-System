@@ -243,8 +243,8 @@ function performLocalVerifiedAttendance(payload) {
   const sessionStartMinutes = 8 * 60 + 30; // 08:30 AM standard session start
   const lateGraceMinutes = 15;
   const isLate = currentMinutes > (sessionStartMinutes + lateGraceMinutes);
-  const punctuality = isLate ? 'LATE' : (currentMinutes <= sessionStartMinutes ? 'EARLY' : 'ON_TIME');
-  const punctualityLabel = isLate ? 'Late Arrival' : (currentMinutes <= sessionStartMinutes ? 'Early' : 'On Time');
+  const punctuality = isLate ? 'LATE' : 'EARLY';
+  const punctualityLabel = isLate ? 'Late' : 'Early';
 
   // 4. Save to local attendance history
   const record = {
@@ -940,9 +940,10 @@ async function loadHistory() {
     
     const iconSvg = isIn ? getSvg('clockIn', 16, '#065f46') : getSvg('clockOut', 16, '#475569');
 
-    const punctualityClass = row.punctuality ? `punct-${row.punctuality.toLowerCase()}` : '';
-    const punctualityBadge = isIn && row.punctuality ? `
-      <span class="punct-pill ${punctualityClass}">${row.punctuality}</span>
+    const punct = (row.punctuality === 'LATE' || row.is_late) ? 'LATE' : 'EARLY';
+    const punctualityClass = punct === 'LATE' ? 'punct-late' : 'punct-early';
+    const punctualityBadge = isIn ? `
+      <span class="punct-pill ${punctualityClass}">${punct}</span>
     ` : '';
 
     li.innerHTML = `
@@ -1404,8 +1405,8 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
 
   const badgeEl = document.getElementById('modal-success-badge');
   if (badgeEl) {
-    const punct = res.punctualityLabel || res.punctuality || 'PRESENT';
-    badgeEl.textContent = `ATTENDANCE CONFIRMED · ${punct.toUpperCase()}`;
+    const punct = (res.punctuality === 'LATE' || res.isLate) ? 'LATE' : 'EARLY';
+    badgeEl.textContent = `ATTENDANCE CONFIRMED · ${punct}`;
   }
 
   const studentEl = document.getElementById('modal-success-student');
@@ -1420,9 +1421,9 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
 
   const punctEl = document.getElementById('modal-success-punctuality');
   if (punctEl) {
-    const isLate = Boolean(res.isLate);
-    const punctClass = isLate ? 'punct-late' : 'punct-on_time';
-    const punctText = res.punctualityLabel || (isLate ? 'Late Arrival' : 'On Time');
+    const isLate = Boolean(res.isLate || res.punctuality === 'LATE');
+    const punctClass = isLate ? 'punct-late' : 'punct-early';
+    const punctText = isLate ? 'Late' : 'Early';
     punctEl.innerHTML = `<span class="punct-pill ${punctClass}">${punctText}</span>`;
   }
 
@@ -1496,10 +1497,10 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
       showVerificationCard({
         status: res.status || 'VERIFIED',
         score: res.riskScore != null ? res.riskScore : 100,
-        punctuality: res.punctuality,
-        punctualityLabel: res.punctualityLabel,
+        punctuality: (res.punctuality === 'LATE' || res.isLate) ? 'LATE' : 'EARLY',
+        punctualityLabel: (res.punctuality === 'LATE' || res.isLate) ? 'Late' : 'Early',
         isLate: res.isLate,
-        message: `Attendance confirmed! Dynamic QR, hardware MAC, and classroom geofence verified. Recorded as ${res.punctualityLabel || res.punctuality || 'PRESENT'}.`,
+        message: `Attendance confirmed! Dynamic QR, hardware MAC, and classroom geofence verified. Recorded as ${(res.isLate || res.punctuality === 'LATE') ? 'Late' : 'Early'}.`,
         checks: res.checks,
       });
     };
@@ -1730,7 +1731,7 @@ async function handleQrScanned(data) {
         bannerEl.className = 'hud-banner success';
         bannerEl.textContent = attendance_type === 'clock_out'
           ? `Clock-out recorded! ${res.student?.full_name || resolvedStudentId} clocked out for today.`
-          : `All 4 security layers verified! ${res.student?.full_name || resolvedStudentId} marked as ${res.punctualityLabel || res.punctuality || 'PRESENT'}. Dropped into Live Attendance in realtime!`;
+          : `All 4 security layers verified! ${res.student?.full_name || resolvedStudentId} marked as ${(res.isLate || res.punctuality === 'LATE') ? 'Late' : 'Early'}. Dropped into Live Attendance in realtime!`;
       }
 
       // Store student & session state

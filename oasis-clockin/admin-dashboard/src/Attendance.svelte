@@ -61,9 +61,8 @@
 
   $: totalIn = records.filter(r => r.type === 'clock_in').length;
   $: totalOut = records.filter(r => r.type === 'clock_out').length;
-  $: earlyCount = records.filter(r => r.punctuality === 'EARLY').length;
-  $: towardsCount = records.filter(r => r.punctuality === 'TOWARDS').length;
-  $: lateCount = records.filter(r => r.punctuality === 'LATE' || r.is_late).length;
+  $: earlyCount = records.filter(r => r.type === 'clock_in' && r.punctuality !== 'LATE' && !r.is_late).length;
+  $: lateCount = records.filter(r => r.type === 'clock_in' && (r.punctuality === 'LATE' || r.is_late)).length;
   $: uniqueStudents = new Set(records.map(r => r.student_id)).size;
 </script>
 
@@ -93,7 +92,6 @@
         <select bind:value={filterPunctuality}>
           <option value="">All Punctuality</option>
           <option value="EARLY">Early Arrivals</option>
-          <option value="TOWARDS">Towards / On-Time</option>
           <option value="LATE">Late Clock-Ins</option>
         </select>
       </div>
@@ -132,10 +130,6 @@
       <span class="stat-lbl">Early Arrivals</span>
     </div>
     <div class="stat">
-      <span class="stat-val punct-towards-txt">{towardsCount}</span>
-      <span class="stat-lbl">Towards / On-Time</span>
-    </div>
-    <div class="stat">
       <span class="stat-val punct-late-txt">{lateCount}</span>
       <span class="stat-lbl">Late Arrivals</span>
     </div>
@@ -146,6 +140,10 @@
     <div class="stat">
       <span class="stat-val clock-out">{totalOut}</span>
       <span class="stat-lbl">Clock Outs</span>
+    </div>
+    <div class="stat">
+      <span class="stat-val">{uniqueStudents}</span>
+      <span class="stat-lbl">Unique Students</span>
     </div>
   </div>
 
@@ -182,10 +180,12 @@
               <td>{r.locations?.name || '—'}</td>
               <td><span class="pill {typeClass(r.type)}">{typeLabel(r.type)}</span></td>
               <td>
-                {#if r.type === 'clock_in' && r.punctuality}
-                  <span class="punct-pill punct-{r.punctuality.toLowerCase()}">{r.punctuality}</span>
-                {:else if r.type === 'clock_in'}
-                  <span class="punct-pill punct-towards">RECORDED</span>
+                {#if r.type === 'clock_in'}
+                  {#if r.punctuality === 'LATE' || r.is_late}
+                    <span class="punct-pill punct-late">LATE</span>
+                  {:else}
+                    <span class="punct-pill punct-early">EARLY</span>
+                  {/if}
                 {:else}
                   <span class="muted">—</span>
                 {/if}

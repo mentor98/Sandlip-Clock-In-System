@@ -205,10 +205,12 @@
                   </span>
                 </td>
                 <td>
-                  {#if r.type === 'clock_in' && r.punctuality}
-                    <span class="punct-chip punct-{r.punctuality.toLowerCase()}">{r.punctuality}</span>
-                  {:else if r.type === 'clock_in'}
-                    <span class="punct-chip punct-towards">RECORDED</span>
+                  {#if r.type === 'clock_in'}
+                    {#if r.punctuality === 'LATE' || r.is_late}
+                      <span class="punct-chip punct-late">LATE</span>
+                    {:else}
+                      <span class="punct-chip punct-early">EARLY</span>
+                    {/if}
                   {:else}
                     <span class="muted">—</span>
                   {/if}

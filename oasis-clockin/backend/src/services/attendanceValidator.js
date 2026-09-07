@@ -143,17 +143,13 @@ function calculatePunctuality({ activeSession, targetLocation, org, currentTime 
   const graceMinutes = (org && org.grace_period_minutes != null) ? org.grace_period_minutes : 15;
   const earlyThreshold = (org && org.early_threshold_minutes != null) ? org.early_threshold_minutes : 10;
 
-  let punctuality = 'PRESENT';
-  let punctualityLabel = 'Present (On Time)';
+  let punctuality = 'EARLY';
+  let punctualityLabel = 'Early';
   let isLate = false;
 
-  if (diffMinutes < -earlyThreshold) {
+  if (diffMinutes <= graceMinutes) {
     punctuality = 'EARLY';
-    punctualityLabel = 'Present (Early)';
-    isLate = false;
-  } else if (diffMinutes <= graceMinutes) {
-    punctuality = 'PRESENT';
-    punctualityLabel = 'Present (On Time)';
+    punctualityLabel = 'Early';
     isLate = false;
   } else {
     punctuality = 'LATE';
@@ -944,7 +940,7 @@ async function validateAndRecordAttendance(params) {
     session_id: targetSessionId,
     risk_score: result.riskScore,
     verification_status: result.status,
-    punctuality: result.punctuality || 'ON_TIME',
+    punctuality: result.punctuality || (result.isLate ? 'LATE' : 'EARLY'),
     is_late: result.isLate || false,
     ip_address: clientIp,
     gps_accuracy: accuracy || null,
