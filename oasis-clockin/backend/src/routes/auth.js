@@ -70,31 +70,89 @@ router.get('/verify-student', async (req, res) => {
   }
 });
 
-// GET /api/auth/next-id — Suggests next available sequential student ID for registration
-router.get('/next-id', async (_req, res) => {
+// Helper: Auto-generate the next student ID based on the last student ID on the admin dashboard
+async function getNextStudentIdFromSupabase() {
   try {
-    const { data: students } = await supabaseAdmin
+    const { data: students, error } = await supabaseAdmin
       .from('students')
-      .select('student_id');
+      .select('student_id, full_name, created_at')
+      .order('created_at', { ascending: false });
 
-    let maxNum = 16;
-    if (students && students.length > 0) {
-      students.forEach(s => {
-        if (s.student_id) {
-          const match = s.student_id.match(/SAN-2026-(\d+)/i) || s.student_id.match(/(\d+)/);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            if (!isNaN(num) && num > maxNum) maxNum = num;
-          }
-        }
-      });
+    if (error) {
+      console.warn('Error fetching students for next-id:', error.message);
     }
+
+    const studentList = Array.isArray(students) ? students : [];
+    const defaultPrefix = 'SAN-2026-';
+    const defaultPad = 3;
+
+    if (studentList.length === 0) {
+      return {
+        nextId: `${defaultPrefix}001`,
+        lastStudentId: null,
+        lastStudentName: null,
+        totalStudents: 0,
+      };
+    }
+
+    // The most recently enrolled student on the admin dashboard (ordered by created_at DESC)
+    const lastStudent = studentList[0];
+    const lastSid = (lastStudent && lastStudent.student_id) ? String(lastStudent.student_id).trim() : '';
+
+    let prefix = defaultPrefix;
+    let padLength = defaultPad;
+    let maxNum = 0;
+
+    // Detect format and prefix from the last student ID on admin
+    if (lastSid) {
+      const match = lastSid.match(/^(.*?)(\d+)$/);
+      if (match) {
+        prefix = match[1];
+        padLength = Math.max(match[2].length, 3);
+        const lastVal = parseInt(match[2], 10);
+        if (!isNaN(lastVal)) {
+          maxNum = lastVal;
+        }
+      }
+    }
+
+    // Scan all existing student records to guarantee no duplicate ID collision
+    for (const s of studentList) {
+      if (!s.student_id) continue;
+      const sid = String(s.student_id).trim();
+      const m = sid.match(/^(.*?)(\d+)$/);
+      if (m && m[1].toLowerCase() === prefix.toLowerCase()) {
+        const val = parseInt(m[2], 10);
+        if (!isNaN(val) && val > maxNum) {
+          maxNum = val;
+        }
+      }
+    }
+
     const nextNum = maxNum + 1;
-    const nextId = `SAN-2026-${String(nextNum).padStart(3, '0')}`;
-    res.json({ nextId });
+    const nextId = `${prefix}${String(nextNum).padStart(padLength, '0')}`;
+
+    return {
+      nextId,
+      lastStudentId: lastSid || null,
+      lastStudentName: lastStudent ? lastStudent.full_name : null,
+      totalStudents: studentList.length,
+    };
   } catch (err) {
-    res.json({ nextId: `SAN-2026-${Math.floor(100 + Math.random() * 900)}` });
+    console.error('Error generating next student ID:', err);
+    return {
+      nextId: 'SAN-2026-001',
+      lastStudentId: null,
+      lastStudentName: null,
+      totalStudents: 0,
+    };
   }
+}
+
+// GET /api/auth/next-id — Checks the last student ID on admin dashboard and returns next auto-generated student ID
+router.get('/next-id', async (_req, res) => {
+  const result = await getNextStudentIdFromSupabase();
+  res.json(result);
 });
 
 function normalizeOrGenerateMac(mac) {
@@ -112,11 +170,15 @@ function normalizeOrGenerateMac(mac) {
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   const { full_name, student_id, email, device_mac } = req.body || {};
-  if (!full_name || !student_id || !email) {
-    return res.status(400).json({ error: 'full_name, student_id, and email are required.' });
+  let cleanId = student_id ? String(student_id).trim() : '';
+  if (!cleanId || cleanId.toUpperCase() === 'AUTO') {
+    const gen = await getNextStudentIdFromSupabase();
+    cleanId = gen.nextId;
   }
 
-  const cleanId = String(student_id).trim();
+  if (!full_name || !cleanId || !email) {
+    return res.status(400).json({ error: 'full_name, student_id, and email are required.' });
+  }
   const cleanEmail = String(email).trim().toLowerCase();
   const cleanName = String(full_name).trim();
   const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '192.168.1.156';

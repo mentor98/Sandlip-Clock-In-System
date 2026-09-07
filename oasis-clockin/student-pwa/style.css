@@ -201,11 +201,91 @@ label { display: block; font-size: 12px; font-weight: 700; margin: 14px 0 6px; c
 .input-wrap {
   position: relative; display: flex; align-items: center;
 }
+.input-wrap.has-action-btn input {
+  padding-right: 44px;
+}
 .input-icon {
   position: absolute; left: 12px; color: var(--ink-400); pointer-events: none;
 }
 .input-wrap input {
   padding-left: 38px;
+}
+
+.label-row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  margin-bottom: 6px;
+}
+.label-row-between label {
+  margin: 0 !important;
+}
+.badge-auto-gen {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #065f46;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  letter-spacing: 0.02em;
+}
+.input-auto-id {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+  border-color: #cbd5e1 !important;
+  cursor: default;
+}
+.input-action-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.input-action-btn:hover {
+  background: #e2e8f0;
+  color: #073B78;
+}
+.input-action-btn.rotating svg {
+  animation: spinAction 0.5s linear infinite;
+}
+@keyframes spinAction {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.id-generation-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: #059669;
+  font-weight: 600;
+}
+.id-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+  flex-shrink: 0;
 }
 
 input {

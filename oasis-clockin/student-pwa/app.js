@@ -487,30 +487,21 @@ document.getElementById('btn-goto-register').onclick = async () => {
   hideSigninAlert();
   showScreen('screen-register');
   clearError('register-error');
-  const studentInput = document.getElementById('student-id');
-  const currentVal = studentInput ? studentInput.value.trim() : '';
-  if (currentVal) {
-    document.getElementById('reg-sid').value = currentVal;
-  } else {
-    await fetchNextStudentId();
-  }
+  await fetchNextStudentId();
+  const nameEl = document.getElementById('reg-name');
+  if (nameEl) nameEl.focus();
 };
 
 // Alert prompt button: "Register & Get Student ID"
 const promptBtn = document.getElementById('btn-prompt-register');
 if (promptBtn) {
   promptBtn.onclick = async () => {
-    const box = document.getElementById('signin-alert-box');
-    const attemptedId = (box && box.dataset.attemptedId) || '';
     hideSigninAlert();
     showScreen('screen-register');
     clearError('register-error');
-    if (attemptedId) {
-      document.getElementById('reg-sid').value = attemptedId;
-    } else {
-      await fetchNextStudentId();
-    }
-    document.getElementById('reg-name').focus();
+    await fetchNextStudentId();
+    const nameEl = document.getElementById('reg-name');
+    if (nameEl) nameEl.focus();
   };
 }
 
@@ -519,7 +510,17 @@ document.getElementById('btn-back-signin').onclick = () => {
   hideSigninAlert();
 };
 
-// Auto suggest ID button (if present)
+// Refresh next Student ID button
+const btnRefreshSid = document.getElementById('btn-refresh-sid');
+if (btnRefreshSid) {
+  btnRefreshSid.onclick = async () => {
+    btnRefreshSid.classList.add('rotating');
+    await fetchNextStudentId();
+    setTimeout(() => btnRefreshSid.classList.remove('rotating'), 500);
+  };
+}
+
+// Auto suggest ID button (if present elsewhere)
 const btnSuggestId = document.getElementById('btn-suggest-id');
 if (btnSuggestId) {
   btnSuggestId.onclick = async () => {
@@ -528,13 +529,26 @@ if (btnSuggestId) {
 }
 
 async function fetchNextStudentId() {
+  const sidEl = document.getElementById('reg-sid');
+  const hintTextEl = document.getElementById('reg-sid-hint-text');
+  if (sidEl && !sidEl.value) {
+    sidEl.placeholder = 'Generating next ID...';
+  }
   try {
     const res = await api('/auth/next-id', { auth: false });
     if (res && res.nextId) {
-      document.getElementById('reg-sid').value = res.nextId;
+      if (sidEl) sidEl.value = res.nextId;
+      if (hintTextEl) {
+        if (res.lastStudentId) {
+          hintTextEl.textContent = `Auto-generated from last admin student: ${res.lastStudentId}${res.lastStudentName ? ` (${res.lastStudentName})` : ''}`;
+        } else {
+          hintTextEl.textContent = `Auto-generated initial student ID: ${res.nextId}`;
+        }
+      }
     }
   } catch (e) {
     console.warn('Could not fetch next id:', e);
+    if (hintTextEl) hintTextEl.textContent = 'Auto-assigned ID active';
   }
 }
 
@@ -569,9 +583,13 @@ document.getElementById('btn-register').onclick = async () => {
   const errEl = 'register-error';
   clearError(errEl);
   const full_name = document.getElementById('reg-name').value.trim();
-  const student_id = document.getElementById('reg-sid').value.trim();
+  let student_id = document.getElementById('reg-sid').value.trim();
   const email = document.getElementById('reg-email').value.trim();
-  if (!full_name || !student_id || !email) { setError(errEl, 'Please fill in all fields.'); return; }
+  if (!student_id) {
+    await fetchNextStudentId();
+    student_id = document.getElementById('reg-sid').value.trim();
+  }
+  if (!full_name || !email || !student_id) { setError(errEl, 'Please enter your full name and institutional email.'); return; }
 
   // 1-Device-per-student check: Ensure this device hasn't already registered a different student
   const boundSid = localStorage.getItem('oasis_bound_device_student_id');
@@ -593,13 +611,14 @@ document.getElementById('btn-register').onclick = async () => {
       auth: false,
     });
 
+    const assignedId = regRes.student?.student_id || student_id;
     const activeToken = regRes.sessionToken || regRes.registrationToken;
     saveSession({ sessionToken: activeToken, deviceId: regRes.deviceId || 'default-device-id' });
-    localStorage.setItem('oasis_student_id', student_id);
+    localStorage.setItem('oasis_student_id', assignedId);
     localStorage.setItem('oasis_student_name', full_name);
-    localStorage.setItem('oasis_bound_device_student_id', student_id);
+    localStorage.setItem('oasis_bound_device_student_id', assignedId);
     localStorage.setItem('oasis_bound_device_student_name', full_name);
-    state.studentId = student_id;
+    state.studentId = assignedId;
     state.studentName = full_name;
 
     // 2. Direct transition to Home Screen — instant response without waiting or page refresh

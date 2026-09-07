@@ -55,6 +55,18 @@
   const unsubStudents = subscribeTable('students', '*', () => load(false));
   onDestroy(() => { unsubDevices(); unsubStudents(); });
 
+  async function toggleAddForm() {
+    showAddForm = !showAddForm;
+    error = '';
+    successMsg = '';
+    if (showAddForm && !newId) {
+      try {
+        const res = await api('/auth/next-id');
+        if (res && res.nextId) newId = res.nextId;
+      } catch (_) {}
+    }
+  }
+
   async function addStudent() {
     error = ''; successMsg = '';
     if (!newName || !newId || !newEmail) { error = 'Fill in all fields to add a student.'; return; }
@@ -151,7 +163,7 @@
       </div>
       <button class="btn btn-primary" on:click={load}>Search</button>
     </div>
-    <button class="btn {showAddForm ? 'ghost' : 'btn-teal'}" on:click={() => { showAddForm = !showAddForm; error = ''; successMsg = ''; }}>
+    <button class="btn {showAddForm ? 'ghost' : 'btn-teal'}" on:click={toggleAddForm}>
       <Icon name={showAddForm ? 'x' : 'plus'} size={15} />
       <span>{showAddForm ? 'Cancel' : 'Add Student'}</span>
     </button>
@@ -170,8 +182,21 @@
           <input bind:value={newName} placeholder="e.g. Ada Lovelace" />
         </div>
         <div class="field">
-          <label>Student / Matric ID</label>
-          <input bind:value={newId} placeholder="e.g. SAN-2026-014" />
+          <div class="field-label-row">
+            <label>Student / Matric ID</label>
+            <span class="badge-auto-tag">Auto-Generated</span>
+          </div>
+          <div class="field-with-btn">
+            <input bind:value={newId} placeholder="e.g. SAN-2026-002" />
+            <button type="button" class="btn-input-reload" title="Refresh next ID based on admin/db" on:click={async () => {
+              try {
+                const res = await api('/auth/next-id');
+                if (res && res.nextId) newId = res.nextId;
+              } catch (_) {}
+            }}>
+              <Icon name="refresh" size={13} color="#0f766e" />
+            </button>
+          </div>
         </div>
         <div class="field">
           <label>Institutional Email</label>
@@ -442,6 +467,20 @@
 
   .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
   .field { display: flex; flex-direction: column; gap: 6px; }
+  .field-label-row { display: flex; justify-content: space-between; align-items: center; }
+  .badge-auto-tag {
+    font-size: 10px; font-weight: 700; color: #0f766e; background: #f0fdfa;
+    border: 1px solid #ccfbf1; padding: 1px 6px; border-radius: 9999px;
+    text-transform: none; letter-spacing: 0.02em;
+  }
+  .field-with-btn { position: relative; display: flex; align-items: center; }
+  .field-with-btn input { width: 100%; padding-right: 36px; }
+  .btn-input-reload {
+    position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+    background: transparent; border: none; color: #0f766e; cursor: pointer;
+    padding: 5px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  }
+  .btn-input-reload:hover { background: #f0fdfa; }
   label { font-size: 12px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.03em; }
   input {
     padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px;
