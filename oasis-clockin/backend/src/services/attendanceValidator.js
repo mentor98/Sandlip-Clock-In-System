@@ -502,7 +502,7 @@ async function validateAttendance(params) {
       } catch (_) {}
       details.session = null;
       checks.activeSession = false;
-      criticalFailures.push('No session created. The previous attendance session has expired or ended. Please wait for an administrator to start a new session.');
+      criticalFailures.push('Please wait for an admin to open a session before clocking in.');
       securityAnomalies.push({ type: 'EXPIRED_SESSION_ATTEMPT', severity: 'HIGH' });
     } else {
       checks.activeSession = true;
@@ -511,7 +511,7 @@ async function validateAttendance(params) {
   } else {
     details.session = null;
     checks.activeSession = false;
-    criticalFailures.push('No session created. An administrator has not created or started an active attendance session.');
+    criticalFailures.push('Please wait for an admin to open a session before clocking in.');
     securityAnomalies.push({ type: 'NO_ACTIVE_SESSION', severity: 'HIGH' });
   }
 
@@ -925,7 +925,7 @@ async function validateAndRecordAttendance(params) {
       console.warn('Audit log denial notice:', auditErr.message);
     }
 
-    const isNoSession = !result.checks.activeSession || result.criticalFailures.some(f => f.toLowerCase().includes('no session created'));
+    const isNoSession = !result.checks.activeSession || result.criticalFailures.some(f => f.toLowerCase().includes('session') || f.toLowerCase().includes('open a session'));
     const isDuplicate = !isNoSession && (result.checks.duplicate || result.criticalFailures.some(f => f.includes('already')));
 
     return {

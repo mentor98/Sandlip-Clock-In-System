@@ -99,21 +99,29 @@ function setError(elId, msg, isSuccess = false) {
 
 function clearError(elId) { setError(elId, ''); }
 
-function showSigninAlert(msg, attemptedId = '') {
+function showSigninAlert(msg, attemptedId = '', showRegisterBtn = false) {
   const box = document.getElementById('signin-alert-box');
   const text = document.getElementById('signin-error-text');
+  const regBtn = document.getElementById('btn-prompt-register');
   if (box && text) {
     text.textContent = msg;
     box.style.display = 'flex';
     box.dataset.attemptedId = attemptedId;
+    if (regBtn) {
+      regBtn.style.display = showRegisterBtn ? 'inline-flex' : 'none';
+    }
   }
 }
 
 function hideSigninAlert() {
   const box = document.getElementById('signin-alert-box');
+  const regBtn = document.getElementById('btn-prompt-register');
   if (box) {
     box.style.display = 'none';
     box.dataset.attemptedId = '';
+  }
+  if (regBtn) {
+    regBtn.style.display = 'none';
   }
 }
 
@@ -204,12 +212,12 @@ window.addEventListener('online', () => {
 
 function performLocalVerifiedAttendance(payload) {
   if (!state.activeSession) {
-    const err = new Error('No session created. An administrator has not created or started an active attendance session.');
+    const err = new Error('Please wait for an admin to open a session before clocking in.');
     err.status = 403;
     err.data = {
       noSessionCreated: true,
-      error: 'No session created. An administrator has not created or started an active attendance session.',
-      criticalFailures: ['No session created. An administrator has not created or started an active attendance session.'],
+      error: 'Please wait for an admin to open a session before clocking in.',
+      criticalFailures: ['Please wait for an admin to open a session before clocking in.'],
     };
     throw err;
   }
@@ -661,7 +669,7 @@ document.getElementById('btn-signin').onclick = async () => {
   hideSigninAlert();
   const student_id = document.getElementById('student-id').value.trim();
   if (!student_id) {
-    showSigninAlert('Please enter your Student / Matric ID.');
+    showSigninAlert('Please enter your Student / Matric ID.', '', false);
     return;
   }
   await doDirectClockIn(student_id);
@@ -685,7 +693,7 @@ async function doDirectClockIn(student_id) {
     if (!state.activeSession) {
       const refreshedSession = await loadSession();
       if (!refreshedSession) {
-        showSigninAlert('No session created. An administrator has not created or started an active attendance session. Please wait for an admin to open a session before clocking in.');
+        showSigninAlert('Please wait for an admin to open a session before clocking in.', '', false);
         return;
       }
     }
@@ -777,13 +785,13 @@ async function doDirectClockIn(student_id) {
 
     if (err.status === 404 || data.notFound) {
       // First time student! Show registration callout
-      showSigninAlert(`Student ID "${student_id}" is not registered. Coming for the first time? Please register to get your ID and clock in.`, student_id);
-    } else if (err.status === 403 && (data.noSessionCreated || (err.message && err.message.toLowerCase().includes('no session created')))) {
+      showSigninAlert(`Student ID "${student_id}" is not registered. Coming for the first time? Please register to get your ID and clock in.`, student_id, true);
+    } else if (err.status === 403 && (data.noSessionCreated || (err.message && (err.message.toLowerCase().includes('session') || err.message.toLowerCase().includes('open a session'))))) {
       state.activeSession = null;
       updateSessionUI(null);
-      showSigninAlert('No session created. An administrator has not created or started an active attendance session. Please wait for an admin to open a session.');
+      showSigninAlert('Please wait for an admin to open a session before clocking in.', '', false);
     } else {
-      showSigninAlert(err.message || 'Clock-in failed. Please verify your Student ID.');
+      showSigninAlert(err.message || 'Clock-in failed. Please verify your Student ID.', '', false);
     }
   } finally {
     btn.disabled = false;
@@ -988,24 +996,8 @@ function applyClockButtonState() {
       }
     }
   } else {
-    if (!state.activeSession) {
-      btn.disabled = true;
-      btn.className = 'btn-primary btn-disabled';
-      text.textContent = 'No session created';
-      btn.style.opacity = '0.65';
-      btn.style.cursor = 'not-allowed';
-      if (icon) {
-        icon.innerHTML = `<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>`;
-      }
-    } else {
-      btn.disabled = false;
-      btn.className = 'btn-primary';
-      text.textContent = 'Clock In';
-      btn.style.opacity = '1';
-      btn.style.cursor = 'pointer';
-      if (icon) {
-        icon.innerHTML = `<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`;
-      }
+    if (icon) {
+      icon.innerHTML = `<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`;
     }
   }
 }
@@ -1025,13 +1017,14 @@ function updateSessionUI(session) {
       frontBanner.className = 'front-session-card session-active';
       frontTitle.innerHTML = `<span class="session-dot"></span> Session Active: ${escapeHtml(session.title)}`;
       frontDesc.textContent = `Location: ${session.locations?.name || 'Sandlip Oasis Campus'}. Clock-in is open.`;
-      if (frontBtnText && (!frontBtn || !frontBtn.disabled || frontBtnText.textContent === 'No session created')) {
+      frontBanner.style.display = 'flex';
+      frontBanner.dataset.studentAttempted = '';
+      if (frontBtnText && (!frontBtn || !frontBtn.disabled)) {
         frontBtnText.textContent = 'Clock In';
       }
     } else {
       frontBanner.className = 'front-session-card session-none';
-      frontTitle.innerHTML = `<span class="session-dot-amber"></span> No session created`;
-      frontDesc.textContent = 'An administrator has not started an attendance session yet. Please wait before clocking in.';
+      frontBanner.style.display = 'none';
     }
   }
 
@@ -1043,9 +1036,7 @@ function updateSessionUI(session) {
       homeBanner.className = 'session-banner';
       homeBanner.style.display = 'flex';
     } else {
-      homeBanner.innerHTML = `<span class="session-dot-amber"></span> <div><strong>No session created</strong> · An administrator has not created or started an active attendance session.</div>`;
-      homeBanner.className = 'session-banner session-none';
-      homeBanner.style.display = 'flex';
+      homeBanner.style.display = 'none';
     }
   }
 
@@ -1196,7 +1187,7 @@ document.getElementById('btn-clock').onclick = async () => {
       showVerificationCard({
         status: 'REJECTED',
         score: 0,
-        message: 'No session created. An administrator has not created or started an active attendance session. Please wait for an admin to start a session before clocking in.',
+        message: 'Please wait for an admin to open a session before clocking in.',
         checks: {
           authentication: true,
           authorizedDevice: true,
@@ -1205,7 +1196,7 @@ document.getElementById('btn-clock').onclick = async () => {
           activeSession: false,
         },
       });
-      setError(errEl, 'No session created. An administrator has not created or started an attendance session.');
+      setError(errEl, 'Please wait for an admin to open a session before clocking in.');
       return;
     }
   }
@@ -1291,13 +1282,13 @@ document.getElementById('btn-clock').onclick = async () => {
   } catch (err) {
     const data = err.data || {};
     const errMsg = err.message || '';
-    if (data.noSessionCreated || errMsg.toLowerCase().includes('no session created')) {
+    if (data.noSessionCreated || errMsg.toLowerCase().includes('session') || errMsg.toLowerCase().includes('open a session')) {
       state.activeSession = null;
       updateSessionUI(null);
       showVerificationCard({
         status: 'REJECTED',
         score: 0,
-        message: 'No session created. An administrator has not created or started an active attendance session.',
+        message: 'Please wait for an admin to open a session before clocking in.',
         checks: {
           authentication: true,
           authorizedDevice: true,
@@ -2070,17 +2061,17 @@ async function handleQrScanned(data) {
       if (iconGeo) iconGeo.className = 'hud-step-icon ok';
     }
 
-    const isNoSession = err.status === 403 && (data.noSessionCreated || (err.message && err.message.toLowerCase().includes('no session created')));
+    const isNoSession = err.status === 403 && (data.noSessionCreated || (err.message && (err.message.toLowerCase().includes('session') || err.message.toLowerCase().includes('open a session'))));
 
     if (isNoSession) {
       state.activeSession = null;
       updateSessionUI(null);
       if (badgeQr) { badgeQr.className = 'hud-badge err'; badgeQr.textContent = 'NO SESSION'; }
       if (iconQr) iconQr.className = 'hud-step-icon err';
-      if (titleEl) titleEl.textContent = 'No Session Created';
+      if (titleEl) titleEl.textContent = 'Session Not Open';
       if (bannerEl) {
         bannerEl.className = 'hud-banner failed';
-        bannerEl.textContent = 'No session created. An administrator has not created or started an active attendance session.';
+        bannerEl.textContent = 'Please wait for an admin to open a session before clocking in.';
       }
     } else if (isDuplicate) {
       if (badgeQr) { badgeQr.className = 'hud-badge err'; badgeQr.textContent = 'REUSED'; }
