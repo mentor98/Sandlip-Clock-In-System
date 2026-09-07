@@ -160,17 +160,9 @@
           <div class="brand-logo-wrap small">
             <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="Oasis ClockIn Logo" class="brand-logo-img" />
           </div>
-          <div>
-            <span class="brand-title small">Oasis ClockIn</span>
-            <span id="header-student-tag" class="student-tag">Student</span>
-          </div>
         </div>
 
         <div class="topbar-actions">
-          <div id="home-server-pill" class="server-status-pill" title="Network Connection Status">
-            <span class="server-status-dot online" id="home-server-dot"></span>
-            <span id="home-server-label">Online</span>
-          </div>
           <button id="btn-scan" class="icon-btn" title="Scan QR Code">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             <span>Scan QR</span>
@@ -195,6 +187,9 @@
       <!-- Clock In Card -->
       <div class="clock-card">
         <p id="home-greeting" class="greeting">Hi there</p>
+        <div id="home-student-id-wrap" class="home-student-id-wrap">
+          <span id="home-student-id" class="home-student-id-badge"></span>
+        </div>
         <div class="status-wrap">
           <span id="home-status" class="status-pill status-out">Not Clocked In</span>
         </div>

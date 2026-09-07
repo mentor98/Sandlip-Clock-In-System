@@ -803,16 +803,43 @@ async function doDirectClockIn(student_id) {
 async function initHome() {
   clearError('home-error');
 
+  const greetingEl = document.getElementById('home-greeting');
+  const homeStudentIdEl = document.getElementById('home-student-id');
+  const initialName = state.studentName || localStorage.getItem('oasis_student_name');
+  const initialId = state.studentId || localStorage.getItem('oasis_student_id');
+
+  if (greetingEl && initialName) {
+    greetingEl.textContent = `Hi, ${initialName}`;
+  }
+  if (homeStudentIdEl && initialId) {
+    homeStudentIdEl.textContent = initialId;
+  }
+
   try {
     const { student } = await api('/auth/me');
-    document.getElementById('home-greeting').textContent = `Hi, ${student.full_name}`;
-    document.getElementById('header-student-tag').textContent = student.student_id;
+    if (greetingEl) {
+      greetingEl.textContent = `Hi, ${student.full_name}`;
+    }
+    if (homeStudentIdEl) {
+      homeStudentIdEl.textContent = student.student_id;
+    }
+    const headerTag = document.getElementById('header-student-tag');
+    if (headerTag) {
+      headerTag.textContent = student.student_id;
+    }
     state.studentName = student.full_name;
     state.studentId = student.student_id;
     localStorage.setItem('oasis_student_id', student.student_id);
     localStorage.setItem('oasis_student_name', student.full_name);
   } catch {
-    document.getElementById('home-greeting').textContent = `Hi, ${state.studentName || state.studentId || 'there'}`;
+    const fallbackName = state.studentName || localStorage.getItem('oasis_student_name');
+    const fallbackId = state.studentId || localStorage.getItem('oasis_student_id');
+    if (greetingEl) {
+      greetingEl.textContent = `Hi, ${fallbackName || fallbackId || 'there'}`;
+    }
+    if (homeStudentIdEl) {
+      homeStudentIdEl.textContent = fallbackId || '';
+    }
   }
 
   // Update device badge

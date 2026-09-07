@@ -645,7 +645,22 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
   top: 0; left: 0; right: 0; height: 4px;
   background: var(--grad-vibrant-h);
 }
-.greeting { color: var(--ink-500); margin: 0 0 4px; font-size: 15px; font-weight: 500; }
+.greeting { color: var(--ink-900); margin: 0 0 4px; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.home-student-id-wrap { margin-bottom: 12px; }
+.home-student-id-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #073B78;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  padding: 3px 12px;
+  border-radius: 6px;
+}
+.home-student-id-badge:empty { display: none; }
 .status-wrap { margin-bottom: 14px; }
 .status-pill {
   display: inline-block; padding: 4px 14px; border-radius: 999px;
