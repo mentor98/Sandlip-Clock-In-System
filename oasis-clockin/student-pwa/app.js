@@ -36,25 +36,111 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-function generateRandomMac() {
-  const hex = '0123456789ABCDEF';
-  let mac = '';
-  for (let i = 0; i < 6; i++) {
-    let b1 = hex[Math.floor(Math.random() * 16)];
-    let b2 = hex[Math.floor(Math.random() * 16)];
-    if (i === 0) {
-      b2 = '26AE'[Math.floor(Math.random() * 4)];
-    }
-    mac += (i > 0 ? ':' : '') + b1 + b2;
+// ====== Deterministic Physical Hardware Fingerprinter ======
+// Generates identical hardware MAC and device ID across Chrome, Firefox, Edge, and Safari on the same physical machine
+function getHardwareDeviceIdentity() {
+  const parts = [];
+
+  // 1. Screen resolution & color depth (consistent across all browsers on this machine)
+  const maxDim = Math.max(window.screen?.width || 0, window.screen?.height || 0);
+  const minDim = Math.min(window.screen?.width || 0, window.screen?.height || 0);
+  parts.push(`scr:${maxDim}x${minDim}x${window.screen?.colorDepth || 24}`);
+
+  // 2. Hardware concurrency (logical CPU cores)
+  parts.push(`cpu:${navigator.hardwareConcurrency || 4}`);
+
+  // 3. System Timezone
+  try {
+    parts.push(`tz:${Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'}`);
+  } catch (_) {
+    parts.push(`tz:${new Date().getTimezoneOffset()}`);
   }
-  return mac;
+
+  // 4. Platform Family
+  const navPlat = (navigator.platform || '').toLowerCase();
+  let platFamily = 'unknown';
+  if (navPlat.includes('win')) platFamily = 'win';
+  else if (navPlat.includes('mac') || navPlat.includes('iphone') || navPlat.includes('ipad')) platFamily = 'mac';
+  else if (navPlat.includes('linux') || navPlat.includes('android')) platFamily = 'linux';
+  parts.push(`os:${platFamily}`);
+
+  // 5. WebGL hardware vendor & unmasked renderer (GPU is identical across browsers)
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (gl) {
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      if (ext) {
+        const renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '';
+        const vendor = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) || '';
+        parts.push(`gpu:${vendor}::${renderer}`);
+      }
+      parts.push(`gl:${gl.getParameter(gl.MAX_TEXTURE_SIZE)}:${gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)}`);
+    }
+  } catch (_) {}
+
+  // 6. AudioContext hardware DAC sample rate
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      parts.push(`audio:${ctx.sampleRate}`);
+      ctx.close();
+    }
+  } catch (_) {}
+
+  const rawString = parts.join('|');
+
+  // Compute 64-bit deterministic hash (using two 32-bit FNV-1a hashes)
+  function fnv1a(str, seed = 0x811c9dc5) {
+    let h = seed;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 0);
+  }
+
+  const h1 = fnv1a(rawString, 0x811c9dc5);
+  const h2 = fnv1a(rawString, 0x9e3779b9);
+  const h3 = fnv1a(rawString + '_ext3', 0x5bd1e995);
+  const h4 = fnv1a(rawString + '_ext4', 0x27d4eb2f);
+
+  const hex1 = h1.toString(16).padStart(8, '0');
+  const hex2 = h2.toString(16).padStart(8, '0');
+  const hexCombined = (hex1 + hex2).toUpperCase();
+
+  // Deterministic hardware MAC address: XX:XX:XX:XX:XX:XX
+  // Ensure locally administered unicast bit (2nd hex digit is 2, 6, A, or E)
+  const b0 = hexCombined.slice(0, 1) + '2';
+  const b1 = hexCombined.slice(2, 4);
+  const b2 = hexCombined.slice(4, 6);
+  const b3 = hexCombined.slice(6, 8);
+  const b4 = hexCombined.slice(8, 10);
+  const b5 = hexCombined.slice(10, 12);
+  const hardwareMac = `${b0}:${b1}:${b2}:${b3}:${b4}:${b5}`;
+
+  // Deterministic hardware UUID (8-4-4-4-12)
+  const p1 = hex1;
+  const p2 = hex2.slice(0, 4);
+  const p3 = '4' + hex2.slice(5, 8);
+  const p4 = 'a' + h3.toString(16).padStart(8, '0').slice(1, 4);
+  const p5 = (h3.toString(16).padStart(8, '0') + h4.toString(16).padStart(8, '0')).slice(0, 12);
+  const hardwareDeviceId = `${p1}-${p2}-${p3}-${p4}-${p5}`;
+
+  return {
+    hardwareMac,
+    hardwareDeviceId,
+    hardwareProfile: rawString,
+  };
 }
 
 function getOrCreateDeviceMac() {
   let mac = localStorage.getItem('oasis_device_mac');
-  const isDefaultOrInvalid = !mac || !/^[0-9A-Fa-f:]{17}$/.test(mac) || (mac.toLowerCase() === 'be:64:b4:14:4d:67' && !localStorage.getItem('oasis_student_id'));
+  const isDefaultOrInvalid = !mac || !/^[0-9A-Fa-f:]{17}$/.test(mac);
   if (isDefaultOrInvalid) {
-    mac = generateRandomMac();
+    const hw = getHardwareDeviceIdentity();
+    mac = hw.hardwareMac;
     localStorage.setItem('oasis_device_mac', mac);
   }
   return mac;
@@ -141,9 +227,27 @@ function clearSession() {
     clockInterval = null;
   }
   stopScanner();
-  localStorage.clear();
+
+  // Clear session-specific state while preserving physical device hardware identity & binding
+  const savedMac = localStorage.getItem('oasis_device_mac');
+  const savedDevId = localStorage.getItem('oasis_device_id');
+  const boundSid = localStorage.getItem('oasis_bound_device_student_id');
+  const boundName = localStorage.getItem('oasis_bound_device_student_name');
+
+  localStorage.removeItem('oasis_session');
+  localStorage.removeItem('oasis_today_clocked_in');
+  localStorage.removeItem('oasis_today_clockin_time');
+  localStorage.removeItem('oasis_today_clocked_out');
+  localStorage.removeItem('oasis_today_clockout_time');
+  localStorage.removeItem('oasis_student_id');
+  localStorage.removeItem('oasis_student_name');
+
+  if (savedMac) localStorage.setItem('oasis_device_mac', savedMac);
+  if (savedDevId) localStorage.setItem('oasis_device_id', savedDevId);
+  if (boundSid) localStorage.setItem('oasis_bound_device_student_id', boundSid);
+  if (boundName) localStorage.setItem('oasis_bound_device_student_name', boundName);
+
   state.sessionToken = null;
-  state.deviceId = null;
   state.studentId = null;
   state.studentName = null;
   state.lastLocation = null;
@@ -242,11 +346,10 @@ function performLocalVerifiedAttendance(payload) {
         email: `${rawId.toLowerCase().replace(/[^a-z0-9]/g, '')}@oasis.edu`,
       };
     } else {
-      student = {
-        student_id: rawId,
-        full_name: localStorage.getItem('oasis_student_name') || `Student (${rawId})`,
-        email: `${rawId.toLowerCase().replace(/[^a-z0-9]/g, '')}@oasis.edu`,
-      };
+      const err = new Error("You don't have an account. Please register to get an ID");
+      err.status = 404;
+      err.data = { notFound: true, error: "You don't have an account. Please register to get an ID" };
+      throw err;
     }
   }
 
@@ -259,10 +362,10 @@ function performLocalVerifiedAttendance(payload) {
     scannedKeys = JSON.parse(localStorage.getItem('oasis_scanned_keys') || '[]');
   } catch (_) {}
 
-  if (scannedKeys.includes(duplicateKey)) {
-    const err = new Error('You have already recorded attendance for this session. Each student can only scan once.');
+  if (scannedKeys.includes(duplicateKey) || state.clockedIn) {
+    const err = new Error('You have already clockin.');
     err.status = 409;
-    err.data = { alreadyScanned: true, error: 'You have already recorded attendance for this session.' };
+    err.data = { alreadyScanned: true, error: 'You have already clockin.' };
     throw err;
   }
 
@@ -689,6 +792,19 @@ async function doDirectClockIn(student_id) {
   if (btnText) btnText.textContent = 'Clocking In…';
 
   try {
+    // 1-Device-per-student binding check across browsers on same device
+    const boundSid = localStorage.getItem('oasis_bound_device_student_id') || state.boundStudent?.student_id;
+    const boundName = localStorage.getItem('oasis_bound_device_student_name') || state.boundStudent?.full_name;
+    if (boundSid && boundSid.toLowerCase() !== student_id.toLowerCase()) {
+      showSigninAlert(`Device Restriction: This physical device is bound to student account "${boundName || boundSid}" (${boundSid}). Each physical device can only be used by one student.`, '', false);
+      return;
+    }
+
+    if (state.clockedIn) {
+      showSigninAlert('You have already clockin.', student_id, false);
+      return;
+    }
+
     // Check if an active session has been created by an administrator
     if (!state.activeSession) {
       const refreshedSession = await loadSession();
@@ -782,11 +898,15 @@ async function doDirectClockIn(student_id) {
   } catch (err) {
     console.error('Clockin error:', err);
     const data = err.data || {};
+    const errMsg = (err.message || '').trim();
 
-    if (err.status === 404 || data.notFound) {
-      // First time student! Show registration callout
-      showSigninAlert(`Student ID "${student_id}" is not registered. Coming for the first time? Please register to get your ID and clock in.`, student_id, true);
-    } else if (err.status === 403 && (data.noSessionCreated || (err.message && (err.message.toLowerCase().includes('session') || err.message.toLowerCase().includes('open a session'))))) {
+    if (err.status === 404 || data.notFound || errMsg.toLowerCase().includes('register to get an id') || errMsg.toLowerCase().includes("don't have an account")) {
+      showSigninAlert("You don't have an account. Please register to get an ID", student_id, true);
+    } else if (err.status === 409 || data.alreadyScanned || errMsg.toLowerCase().includes('already')) {
+      state.clockedIn = true;
+      localStorage.setItem('oasis_today_clocked_in', 'true');
+      showSigninAlert('You have already clockin.', student_id, false);
+    } else if (err.status === 403 && (data.noSessionCreated || errMsg.toLowerCase().includes('session') || errMsg.toLowerCase().includes('open a session'))) {
       state.activeSession = null;
       updateSessionUI(null);
       showSigninAlert('Please wait for an admin to open a session before clocking in.', '', false);
@@ -1191,7 +1311,7 @@ document.getElementById('btn-clock').onclick = async () => {
     showVerificationCard({
       status: 'VERIFIED',
       score: 100,
-      message: `Hi ${state.studentName || 'Emmanuel'}, your attendance has already been successfully recorded for today! Clock-out opens at 5:00 PM.`,
+      message: 'You have already clockin.',
       checks: {
         authentication: true,
         authorizedDevice: true,
@@ -1204,6 +1324,7 @@ document.getElementById('btn-clock').onclick = async () => {
         activeSession: true,
       },
     });
+    setError(errEl, 'You have already clockin.');
     return;
   }
 
@@ -1333,7 +1454,7 @@ document.getElementById('btn-clock').onclick = async () => {
         punctuality: data.punctuality,
         punctualityLabel: data.punctualityLabel,
         isLate: data.isLate,
-        message: 'You have already recorded your clock-in for today! Clock-out opens at 5:00 PM.',
+        message: 'You have already clockin.',
         checks: {
           authentication: true,
           authorizedDevice: true,
@@ -1346,6 +1467,7 @@ document.getElementById('btn-clock').onclick = async () => {
           activeSession: true,
         },
       });
+      setError(errEl, 'You have already clockin.');
     } else {
       showVerificationCard({
         status: data.status || 'REJECTED',
@@ -2263,6 +2385,76 @@ async function updateServerStatusPill() {
   if (homeDot) homeDot.className = dotClass;
 }
 
+// ====== Smart Physical Device Identity & Cross-Browser Synchronization ======
+async function initializeDeviceIdentity() {
+  const hw = getHardwareDeviceIdentity();
+  state.hardwareProfile = hw.hardwareProfile;
+
+  // Consistent hardware MAC across browsers on same device
+  let currentMac = localStorage.getItem('oasis_device_mac');
+  if (!currentMac || !/^[0-9A-Fa-f:]{17}$/.test(currentMac)) {
+    currentMac = hw.hardwareMac;
+    localStorage.setItem('oasis_device_mac', currentMac);
+  }
+  state.deviceMac = currentMac;
+
+  // Consistent hardware device ID across browsers on same device
+  let currentDevId = localStorage.getItem('oasis_device_id');
+  if (!currentDevId || currentDevId === 'default-device-id') {
+    currentDevId = hw.hardwareDeviceId;
+    localStorage.setItem('oasis_device_id', currentDevId);
+  }
+  state.deviceId = currentDevId;
+
+  // Query backend /api/device/identify to recognize physical machine across browsers
+  try {
+    const res = await api('/device/identify', {
+      method: 'POST',
+      body: {
+        hardware_device_id: state.deviceId,
+        hardware_mac: state.deviceMac,
+        user_agent: navigator.userAgent,
+        platform: navigator.platform,
+      },
+      auth: false,
+      timeoutMs: 3500,
+    });
+
+    if (res && res.recognized) {
+      if (res.boundStudent) {
+        state.boundStudent = res.boundStudent;
+        localStorage.setItem('oasis_bound_device_student_id', res.boundStudent.student_id);
+        localStorage.setItem('oasis_bound_device_student_name', res.boundStudent.full_name);
+
+        const sidInput = document.getElementById('student-id');
+        if (sidInput && !sidInput.value) {
+          sidInput.value = res.boundStudent.student_id;
+        }
+
+        if (res.todayStatus) {
+          if (res.todayStatus.clockedIn) {
+            state.clockedIn = true;
+            localStorage.setItem('oasis_today_clocked_in', 'true');
+          }
+          if (res.todayStatus.clockedOut) {
+            state.clockedOut = true;
+            localStorage.setItem('oasis_today_clocked_out', 'true');
+          }
+        }
+      }
+
+      if (res.device?.mac_address) {
+        state.deviceMac = res.device.mac_address;
+        localStorage.setItem('oasis_device_mac', res.device.mac_address);
+      }
+    }
+  } catch (identErr) {
+    console.warn('Physical device identification notice:', identErr.message);
+  }
+
+  updateDeviceBadge();
+}
+
 // Periodically check server connectivity every 30s
 setInterval(updateServerStatusPill, 30000);
 
@@ -2275,6 +2467,9 @@ setInterval(updateServerStatusPill, 30000);
       localStorage.removeItem('oasis_api_base');
     }
   } catch (_) {}
+
+  // Identify physical hardware and synchronize binding across browsers
+  await initializeDeviceIdentity();
 
   // Wire up QR image drag/upload
   setupQrImageUpload();

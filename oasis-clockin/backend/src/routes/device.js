@@ -57,6 +57,173 @@ router.get(['/config', '/location-config'], async (_req, res) => {
   }
 });
 
+// ── POST & GET /api/device/identify ──────────────────────────────────────────
+// Smart device resolution: Identifies physical hardware across browsers (Chrome, Firefox, Safari) and devices
+router.all('/identify', async (req, res) => {
+  const body = req.method === 'POST' ? (req.body || {}) : (req.query || {});
+  const { hardware_device_id, hardware_mac, student_id, user_agent, platform } = body;
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '192.168.1.156';
+
+  try {
+    const cleanMac = (hardware_mac || '').trim();
+    const cleanDevId = (hardware_device_id || '').trim();
+    const cleanSid = (student_id || '').trim();
+
+    let device = null;
+    let boundStudent = null;
+
+    // 1. Look up device by hardware MAC
+    if (cleanMac) {
+      const { data: dByMac } = await supabaseAdmin
+        .from('devices')
+        .select('*, students(id, student_id, full_name, email, status, registered_mac, registered_ip)')
+        .ilike('mac_address', cleanMac)
+        .is('revoked_at', null)
+        .limit(1)
+        .maybeSingle();
+      if (dByMac) {
+        device = dByMac;
+        boundStudent = dByMac.students || null;
+      }
+    }
+
+    // 2. Look up device by hardware device ID
+    if (!device && cleanDevId) {
+      const { data: dById } = await supabaseAdmin
+        .from('devices')
+        .select('*, students(id, student_id, full_name, email, status, registered_mac, registered_ip)')
+        .eq('device_id', cleanDevId)
+        .is('revoked_at', null)
+        .limit(1)
+        .maybeSingle();
+      if (dById) {
+        device = dById;
+        boundStudent = dById.students || null;
+      }
+    }
+
+    // 3. Look up registered_mac in students table
+    if (!boundStudent && cleanMac) {
+      const { data: sByMac } = await supabaseAdmin
+        .from('students')
+        .select('id, student_id, full_name, email, status, registered_mac, registered_ip')
+        .ilike('registered_mac', cleanMac)
+        .maybeSingle();
+      if (sByMac) boundStudent = sByMac;
+    }
+
+    // 4. If student_id query supplied, check if that student is registered on another device
+    let studentDeviceStatus = null;
+    if (cleanSid) {
+      const { data: queryStudent } = await supabaseAdmin
+        .from('students')
+        .select('id, student_id, full_name, email, status, registered_mac, registered_ip')
+        .or(`student_id.ilike.${cleanSid},id.eq.${cleanSid}`)
+        .maybeSingle();
+
+      if (!queryStudent) {
+        studentDeviceStatus = {
+          exists: false,
+          error: "You don't have an account. Please register to get an ID",
+        };
+      } else {
+        const normStudentMac = (queryStudent.registered_mac || '').replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+        const normHardwareMac = (cleanMac || '').replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+        const isMatched = !normStudentMac || !normHardwareMac || normStudentMac === normHardwareMac;
+
+        studentDeviceStatus = {
+          exists: true,
+          student: queryStudent,
+          isCurrentDevice: isMatched,
+          registeredMac: queryStudent.registered_mac,
+        };
+      }
+    }
+
+    // 5. Check today's clock-in status
+    const studentToCheck = boundStudent || (studentDeviceStatus?.exists ? studentDeviceStatus.student : null);
+    // 5. Check active attendance session first
+    const { inMemorySessions } = require('../utils/sharedSessions');
+    const { hasStudentAttendedSession, scannedStudentSessions } = require('../services/attendanceValidator');
+    let activeSession = null;
+    try {
+      const { data: s } = await supabaseAdmin
+        .from('attendance_sessions')
+        .select('id, title, location_id, locations(name), started_at, ends_at, status')
+        .eq('status', 'ACTIVE')
+        .lte('started_at', new Date().toISOString())
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (s && (!s.ends_at || new Date(s.ends_at) > new Date())) activeSession = s;
+    } catch (_) {}
+    if (!activeSession) {
+      activeSession = inMemorySessions.find(s => s.status === 'ACTIVE' && (!s.ends_at || new Date(s.ends_at) > new Date())) || null;
+    }
+
+    // 6. Check today's clock-in status
+    let todayStatus = { clockedIn: false, clockedOut: false };
+    if (studentToCheck) {
+      const today = new Date().toISOString().slice(0, 10);
+      try {
+        const { data: att } = await supabaseAdmin
+          .from('attendance')
+          .select('type, recorded_at, session_id')
+          .eq('student_id', studentToCheck.id)
+          .gte('recorded_at', today);
+        if (att && Array.isArray(att)) {
+          todayStatus.clockedIn = att.some(a => a.type === 'clock_in');
+          todayStatus.clockedOut = att.some(a => a.type === 'clock_out');
+        }
+      } catch (_) {}
+
+      // Fast check in memory session attendance
+      if (activeSession && (hasStudentAttendedSession(studentToCheck.id, activeSession.id) || hasStudentAttendedSession(studentToCheck.student_id, activeSession.id))) {
+        todayStatus.clockedIn = true;
+      }
+      if (scannedStudentSessions && (scannedStudentSessions.has(`${studentToCheck.id}:${activeSession?.id}`) || scannedStudentSessions.has(`${studentToCheck.student_id}:${activeSession?.id}`))) {
+        todayStatus.clockedIn = true;
+      }
+    }
+
+    return res.json({
+      success: true,
+      recognized: Boolean(device || boundStudent),
+      isBound: Boolean(boundStudent),
+      hardware_mac: cleanMac,
+      hardware_device_id: cleanDevId,
+      device: device ? {
+        id: device.id,
+        device_id: device.device_id || cleanDevId,
+        mac_address: device.mac_address || cleanMac,
+        status: device.status || 'AUTHORIZED',
+        device_name: device.device_name || 'Physical Device',
+      } : null,
+      boundStudent: boundStudent ? {
+        id: boundStudent.id,
+        student_id: boundStudent.student_id,
+        full_name: boundStudent.full_name,
+        email: boundStudent.email,
+        status: boundStudent.status,
+      } : null,
+      studentDeviceStatus,
+      todayStatus,
+      activeSession,
+      hasActiveSession: Boolean(activeSession),
+      clientIp,
+      oasisNetwork: {
+        wifi_ssid: 'The Oasis',
+        wifi_mac: 'be:64:b4:14:4d:67',
+        wifi_ip: '192.168.1.156',
+      },
+      server_timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('Device identify error:', err);
+    res.status(500).json({ error: 'Device identification failed.' });
+  }
+});
+
 // ── POST /api/device/register ────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   const { student_id, device_id, device_name, platform, user_agent, mac_address } = req.body || {};

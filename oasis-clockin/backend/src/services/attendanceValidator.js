@@ -266,7 +266,7 @@ async function validateAttendance(params) {
   }
 
   if (!student) {
-    criticalFailures.push('Student account not found.');
+    criticalFailures.push("You don't have an account. Please register to get an ID");
     securityAnomalies.push({ type: 'ACCOUNT_NOT_FOUND', severity: 'HIGH' });
   } else if (student.status && student.status === 'suspended') {
     criticalFailures.push(`Student account is currently suspended.`);
@@ -742,12 +742,11 @@ async function validateAttendance(params) {
       // Fast-path in-memory check for duplicate QR nonce or session scan
       if (qrNonce && hasStudentScannedNonce(studentId, qrNonce)) {
         checks.duplicate = true;
-        criticalFailures.push('You have already scanned this QR code. Each student can only scan the QR code once.');
+        criticalFailures.push('You have already clockin.');
         securityAnomalies.push({ type: 'DUPLICATE_QR_SCAN', severity: 'HIGH' });
       } else if (targetSessionId && hasStudentAttendedSession(studentId, targetSessionId)) {
         checks.duplicate = true;
-        const targetLabel = activeSession?.title || 'this session';
-        criticalFailures.push(`You have already recorded attendance for ${targetLabel}. Each student can only scan once per session.`);
+        criticalFailures.push('You have already clockin.');
         securityAnomalies.push({ type: 'DUPLICATE_SESSION_ATTENDANCE', severity: 'HIGH' });
       }
 
@@ -770,8 +769,7 @@ async function validateAttendance(params) {
 
         if (existing && existing.length > 0) {
           checks.duplicate = true;
-          const targetLabel = activeSession?.title || targetLocation?.name || 'this session';
-          criticalFailures.push(`You have already recorded your clock-in attendance for ${targetLabel}. Clock-out opens at 5:00 PM.`);
+          criticalFailures.push('You have already clockin.');
           securityAnomalies.push({ type: 'DUPLICATE_ATTENDANCE_ATTEMPT', severity: 'HIGH' });
         }
       }
@@ -1086,4 +1084,4 @@ async function validateAndRecordAttendance(params) {
   };
 }
 
-module.exports = { validateAttendance, validateAndRecordAttendance, registerStudentScanned };
+module.exports = { validateAttendance, validateAndRecordAttendance, registerStudentScanned, hasStudentAttendedSession, scannedStudentSessions };

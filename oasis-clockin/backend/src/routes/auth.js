@@ -50,7 +50,9 @@ router.get('/verify-student', async (req, res) => {
     if (!student) {
       return res.status(404).json({
         exists: false,
-        error: `Student ID "${rawId}" not found in database. Please verify your Matric ID.`,
+        error: "You don't have an account. Please register to get an ID",
+        notFound: true,
+        attemptedId: rawId,
       });
     }
 
@@ -440,7 +442,7 @@ router.post('/direct-login', async (req, res) => {
 
   if (!student) {
     return res.status(404).json({
-      error: `Student ID "${cleanId}" is not registered. First time here? Please register to get your Student ID.`,
+      error: "You don't have an account. Please register to get an ID",
       notFound: true,
       attemptedId: cleanId,
     });
@@ -520,7 +522,7 @@ router.post('/clockin-direct', async (req, res) => {
 
   if (!student) {
     return res.status(404).json({
-      error: `Student ID "${cleanId}" is not registered. First time here? Please register to get your Student ID.`,
+      error: "You don't have an account. Please register to get an ID",
       notFound: true,
       attemptedId: cleanId,
     });

@@ -118,7 +118,7 @@ router.get('/active', async (_req, res) => {
     return res.json({ session: active, active: true });
   }
 
-  res.json({ session: null, active: false, message: 'No session created' });
+  res.json({ session: null, active: false, message: 'Please wait for an admin to open a session before clocking in.' });
 });
 
 // ── Admin only below ──────────────────────────────────────────────────────────
