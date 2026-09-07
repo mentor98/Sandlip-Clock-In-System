@@ -59,6 +59,8 @@ function makeHandler(attendanceType) {
         checks: result.checks,
         details: result.details,
         criticalFailures: result.criticalFailures,
+        noSessionCreated: result.noSessionCreated || false,
+        code: result.code || (result.noSessionCreated ? 'NO_SESSION_CREATED' : 'ATTENDANCE_FAILED'),
       });
     }
 

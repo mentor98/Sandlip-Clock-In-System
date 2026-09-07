@@ -553,7 +553,10 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
   font-weight: 600;
 }
 .session-banner.session-inactive {
-  background: #f8fafc; border-color: var(--ink-200); color: var(--ink-500); font-weight: 500;
+  background: #fffbeb; border: 1px solid #fde68a; color: #b45309; font-weight: 600;
+}
+.session-banner.session-none {
+  background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-weight: 600;
 }
 .session-dot {
   width: 8px; height: 8px; border-radius: 50%;
@@ -561,9 +564,71 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
   box-shadow: 0 0 8px #32F000;
   animation: pulse 1.5s infinite;
 }
+.session-dot-amber {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #f59e0b; flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+}
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(1.4); }
+}
+
+/* Front Session Banner on signin screen */
+.front-session-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+.front-session-card.session-none {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+.front-session-card.session-none .front-session-title {
+  font-weight: 700;
+  color: #b45309;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.front-session-card.session-none .front-session-desc {
+  font-size: 11.5px;
+  color: #78350f;
+  margin-top: 2px;
+  line-height: 1.35;
+}
+.front-session-card.session-active {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+.front-session-card.session-active .front-session-title {
+  font-weight: 700;
+  color: #15803d;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.front-session-card.session-active .front-session-desc {
+  font-size: 11.5px;
+  color: #14532d;
+  margin-top: 2px;
+  line-height: 1.35;
+}
+.front-session-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Clock Card */

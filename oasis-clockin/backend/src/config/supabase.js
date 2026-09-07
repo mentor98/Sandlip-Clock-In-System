@@ -136,19 +136,7 @@ const tables = {
       qr_generated_at: new Date().toISOString(),
     },
   ],
-  attendance_sessions: [
-    {
-      id: 'sess-00000000-0000-0000-0000-000000000001',
-      title: 'Morning Class & Lab Session',
-      location_id: defaultLocId,
-      created_by: defaultAdminId,
-      status: 'ACTIVE',
-      started_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-      ends_at: new Date(Date.now() + 3600000 * 8).toISOString(),
-      closed_at: null,
-      created_at: new Date().toISOString(),
-    },
-  ],
+  attendance_sessions: [],
   organization_config: [
     {
       id: 'default',

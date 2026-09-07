@@ -39,15 +39,7 @@ async function findSession(sessionId) {
   const mem = inMemorySessions.find((s) => s.id === sessionId);
   if (mem) return mem;
 
-  // 3. Fallback synthesis so QR generation or session operations never fail with 404
-  return {
-    id: sessionId,
-    title: 'Attendance Session',
-    location_id: 'c0000000-0000-0000-0000-000000000001',
-    status: 'ACTIVE',
-    started_at: new Date().toISOString(),
-    locations: { name: 'Sandlip Oasis Campus' },
-  };
+  return null;
 }
 
 async function ensureValidLocation(preferredId) {

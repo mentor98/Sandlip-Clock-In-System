@@ -84,27 +84,41 @@ router.get('/:id/stream', (req, res) => {
   });
 });
 
-// GET /api/sessions/active — student polls this to know if a session is open
-router.get('/active', requireAuth, async (_req, res) => {
+// GET /api/sessions/active — public status check for students to know if a session is open
+router.get('/active', async (_req, res) => {
+  const now = new Date();
+  const nowIso = now.toISOString();
+
   try {
     const { data, error } = await supabaseAdmin
       .from('attendance_sessions')
       .select('id, title, location_id, locations(name), started_at, ends_at, status')
       .eq('status', 'ACTIVE')
-      .lte('started_at', new Date().toISOString())
+      .lte('started_at', nowIso)
       .order('started_at', { ascending: false })
       .limit(1)
       .single();
 
-    if (!error && data) {
-      return res.json({ session: data });
+    if (!error && data && data.status === 'ACTIVE') {
+      if (!data.ends_at || new Date(data.ends_at) > now) {
+        return res.json({ session: data, active: true });
+      }
     }
   } catch (err) {
     console.warn('Active session query notice:', err.message);
   }
 
-  const active = inMemorySessions.find((s) => s.status === 'ACTIVE') || null;
-  res.json({ session: active });
+  const active = inMemorySessions.find((s) => {
+    if (s.status !== 'ACTIVE' || s.deleted_at) return false;
+    if (s.ends_at && new Date(s.ends_at) <= now) return false;
+    return true;
+  }) || null;
+
+  if (active) {
+    return res.json({ session: active, active: true });
+  }
+
+  res.json({ session: null, active: false, message: 'No session created' });
 });
 
 // ── Admin only below ──────────────────────────────────────────────────────────

@@ -501,12 +501,18 @@ async function validateAttendance(params) {
           .eq('id', activeSession.id);
       } catch (_) {}
       details.session = null;
+      checks.activeSession = false;
+      criticalFailures.push('No session created. The previous attendance session has expired or ended. Please wait for an administrator to start a new session.');
+      securityAnomalies.push({ type: 'EXPIRED_SESSION_ATTEMPT', severity: 'HIGH' });
     } else {
       checks.activeSession = true;
       details.session = activeSession;
     }
   } else {
     details.session = null;
+    checks.activeSession = false;
+    criticalFailures.push('No session created. An administrator has not created or started an active attendance session.');
+    securityAnomalies.push({ type: 'NO_ACTIVE_SESSION', severity: 'HIGH' });
   }
 
   // ── 6. GPS & Geofence proximity verification ────────────────────────────────
@@ -713,7 +719,7 @@ async function validateAttendance(params) {
   }
 
   // ── 8. Duplicate attendance check & Single-use QR enforcement ───────────────
-  if (checks.authentication) {
+  if (checks.authentication && checks.activeSession) {
     const today = new Date().toISOString().slice(0, 10);
     const targetSessionId = details.sessionId || activeSession?.id || null;
     const qrNonce = details.qrNonce || null;
@@ -919,17 +925,21 @@ async function validateAndRecordAttendance(params) {
       console.warn('Audit log denial notice:', auditErr.message);
     }
 
-    const isDuplicate = result.checks.duplicate || result.criticalFailures.some(f => f.includes('already'));
+    const isNoSession = !result.checks.activeSession || result.criticalFailures.some(f => f.toLowerCase().includes('no session created'));
+    const isDuplicate = !isNoSession && (result.checks.duplicate || result.criticalFailures.some(f => f.includes('already')));
+
     return {
       success: false,
       approved: false,
-      statusCode: isDuplicate ? 409 : 403,
+      statusCode: isNoSession ? 403 : (isDuplicate ? 409 : 403),
       error: primaryError,
       status: result.status,
       riskScore: result.riskScore,
       checks: result.checks,
       details: result.details,
       criticalFailures: result.criticalFailures,
+      noSessionCreated: isNoSession,
+      code: isNoSession ? 'NO_SESSION_CREATED' : (isDuplicate ? 'DUPLICATE' : 'ATTENDANCE_DENIED'),
     };
   }
 

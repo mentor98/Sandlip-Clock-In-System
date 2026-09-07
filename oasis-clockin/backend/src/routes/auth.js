@@ -596,6 +596,8 @@ router.post('/clockin-direct', async (req, res) => {
       details: result.details,
       criticalFailures: result.criticalFailures,
       alreadyScanned: result.statusCode === 409,
+      noSessionCreated: result.noSessionCreated || false,
+      code: result.code || (result.noSessionCreated ? 'NO_SESSION_CREATED' : 'ATTENDANCE_FAILED'),
       student: {
         id: student.id,
         student_id: student.student_id,
