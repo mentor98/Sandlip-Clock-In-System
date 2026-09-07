@@ -103,12 +103,30 @@
 
 <style>
   :global(*, *::before, *::after) { box-sizing: border-box; }
+  :global(html) {
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
   :global(body) {
     margin: 0;
+    padding: 0;
     background: #f8fafc;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: #0f172a;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  :global(::-webkit-scrollbar) {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  :global(*) {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
   :global(code) {
     white-space: nowrap !important;
@@ -118,15 +136,23 @@
     white-space: nowrap !important;
   }
 
-  .shell { display: flex; min-height: 100vh; }
+  .shell {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
 
   .sidebar {
     width: 240px; background: #071527; color: #f1f5f9;
-    display: flex; flex-direction: column; padding: 24px 16px;
+    display: flex; flex-direction: column; padding: 20px 14px;
     flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0;
     overflow-y: auto; border-right: 1px solid rgba(50, 240, 0, 0.12);
     z-index: 20;
+    scrollbar-width: none;
   }
+  .sidebar::-webkit-scrollbar { display: none; }
   .brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding: 0 4px; }
   .sidebar-logo-img {
     height: 38px;
@@ -211,15 +237,26 @@
   }
   .logout:hover { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.25); color: #fca5a5; }
 
-  .content { margin-left: 240px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; background: #f8fafc; }
+  .content {
+    margin-left: 240px;
+    flex: 1;
+    min-width: 0;
+    width: calc(100% - 240px);
+    max-width: calc(100vw - 240px);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: #f8fafc;
+    overflow-x: hidden;
+  }
   .topbar {
-    background: #ffffff; padding: 16px 32px; border-bottom: 1px solid #e2e8f0;
+    background: #ffffff; padding: 12px 24px; border-bottom: 1px solid #e2e8f0;
     position: sticky; top: 0; z-index: 10;
     display: flex; align-items: center; justify-content: space-between;
     box-shadow: 0 1px 3px 0 rgba(7, 59, 120, 0.04);
   }
-  .page-title { margin: 0; font-size: 18px; font-weight: 800; color: #071527; letter-spacing: -0.01em; }
-  .page { padding: 28px 32px; flex: 1; }
+  .page-title { margin: 0; font-size: 17px; font-weight: 800; color: #071527; letter-spacing: -0.01em; }
+  .page { padding: 18px 22px; flex: 1; min-width: 0; width: 100%; overflow-x: hidden; }
 
   @media (max-width: 992px) {
     .menu-btn { display: inline-flex; }

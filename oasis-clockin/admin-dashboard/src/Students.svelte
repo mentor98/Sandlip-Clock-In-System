@@ -469,29 +469,36 @@
   }
 
   .table-wrap {
-    background: white; border: 1px solid #e2e8f0; border-radius: 14px;
+    background: white; border: 1px solid #e2e8f0; border-radius: 12px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     width: 100%;
+  }
+  .table-wrap::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   table {
     width: 100%;
-    min-width: 1080px;
     border-collapse: collapse;
-    font-size: 13.5px;
+    font-size: 12px;
+    table-layout: auto;
   }
   th {
-    background: #f8fafc; text-align: left; padding: 12px 20px;
-    color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
-    letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc; text-align: left; padding: 8px 10px;
+    color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.03em; border-bottom: 1px solid #e2e8f0;
     white-space: nowrap;
   }
   td {
-    padding: 13px 20px;
+    padding: 7px 10px;
     border-bottom: 1px solid #f1f5f9;
     color: #334155;
     white-space: nowrap;
+    font-size: 12px;
   }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
@@ -511,12 +518,12 @@
   }
 
   .bold { font-weight: 600; color: #0f172a; }
-  .muted { color: #94a3b8; }
-  .mono { font-family: monospace; font-size: 12px; }
+  .muted { color: #94a3b8; font-size: 11.5px; }
+  .mono { font-family: monospace; font-size: 11.5px; }
   .center { text-align: center; }
   .pad-16 { padding: 16px; }
   .pad-24 { padding: 24px; }
-  .count-txt { font-size: 12.5px; color: #64748b; margin: 0; }
+  .count-txt { font-size: 12px; color: #64748b; margin: 0; }
 
   .nowrap-cell {
     white-space: nowrap;
@@ -524,7 +531,7 @@
 
   .actions {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     align-items: center;
     flex-wrap: nowrap;
     white-space: nowrap;
@@ -532,6 +539,8 @@
   .actions .btn {
     flex-shrink: 0;
     white-space: nowrap;
+    padding: 4px 8px;
+    font-size: 11px;
   }
 
   .device-badge-btn {
