@@ -424,7 +424,7 @@
                     <div class="scan-left">
                       <div class="scan-title-line">
                         <span class="scan-name">{scan.students?.full_name || 'Student'}</span>
-                        <span class="badge-punctuality {scan.is_late ? 'late' : 'present'}">
+                        <span class="badge-punctuality {scan.is_late ? 'late' : (scan.punctuality === 'WARNING' ? 'warning' : 'present')}">
                           {scan.is_late ? 'LATE' : (scan.punctuality || 'PRESENT')}
                         </span>
                       </div>
@@ -895,6 +895,9 @@
   }
   .badge-punctuality.present {
     background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;
+  }
+  .badge-punctuality.warning {
+    background: #fffbeb; color: #b45309; border: 1px solid #fcd34d;
   }
   .badge-punctuality.late {
     background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;

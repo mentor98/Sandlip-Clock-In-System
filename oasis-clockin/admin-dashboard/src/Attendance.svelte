@@ -61,7 +61,8 @@
 
   $: totalIn = records.filter(r => r.type === 'clock_in').length;
   $: totalOut = records.filter(r => r.type === 'clock_out').length;
-  $: earlyCount = records.filter(r => r.type === 'clock_in' && r.punctuality !== 'LATE' && !r.is_late).length;
+  $: earlyCount = records.filter(r => r.type === 'clock_in' && r.punctuality === 'EARLY').length;
+  $: warningCount = records.filter(r => r.type === 'clock_in' && r.punctuality === 'WARNING').length;
   $: lateCount = records.filter(r => r.type === 'clock_in' && (r.punctuality === 'LATE' || r.is_late)).length;
   $: uniqueStudents = new Set(records.map(r => r.student_id)).size;
 </script>
@@ -91,8 +92,9 @@
         <label>Punctuality Status</label>
         <select bind:value={filterPunctuality}>
           <option value="">All Punctuality</option>
-          <option value="EARLY">Early Arrivals</option>
-          <option value="LATE">Late Clock-Ins</option>
+          <option value="EARLY">Early (7:00am - 8:30am)</option>
+          <option value="WARNING">Warning (8:40am - 9:15am)</option>
+          <option value="LATE">Late (9:16am - 5:00pm)</option>
         </select>
       </div>
       <div class="field">
@@ -128,6 +130,10 @@
     <div class="stat">
       <span class="stat-val punct-early-txt">{earlyCount}</span>
       <span class="stat-lbl">Early Arrivals</span>
+    </div>
+    <div class="stat">
+      <span class="stat-val punct-warning-txt">{warningCount}</span>
+      <span class="stat-lbl">Warning</span>
     </div>
     <div class="stat">
       <span class="stat-val punct-late-txt">{lateCount}</span>
@@ -183,6 +189,8 @@
                 {#if r.type === 'clock_in'}
                   {#if r.punctuality === 'LATE' || r.is_late}
                     <span class="punct-pill punct-late">LATE</span>
+                  {:else if r.punctuality === 'WARNING'}
+                    <span class="punct-pill punct-warning">WARNING</span>
                   {:else}
                     <span class="punct-pill punct-early">EARLY</span>
                   {/if}
@@ -317,8 +325,12 @@
     font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
   }
   .punct-early { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+  .punct-warning { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
   .punct-towards { background: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc; }
   .punct-late { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+  .punct-early-txt { color: #15803d; }
+  .punct-warning-txt { color: #d97706; }
+  .punct-late-txt { color: #dc2626; }
 
   .notice { padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; }
   .notice.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }

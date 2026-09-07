@@ -644,7 +644,7 @@ router.get('/attendance/export', async (req, res) => {
       `"${r.students?.student_id || ''}"`,
       `"${r.locations?.name || ''}"`,
       r.type || 'clock_in',
-      (r.punctuality === 'LATE' ? 'LATE' : 'EARLY'),
+      r.punctuality || (r.is_late ? 'LATE' : 'EARLY'),
       r.device_mac || '—',
       r.ip_address || '—',
       r.verification_status || 'VERIFIED',

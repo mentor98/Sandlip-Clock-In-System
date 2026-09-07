@@ -208,6 +208,8 @@
                   {#if r.type === 'clock_in'}
                     {#if r.punctuality === 'LATE' || r.is_late}
                       <span class="punct-chip punct-late">LATE</span>
+                    {:else if r.punctuality === 'WARNING'}
+                      <span class="punct-chip punct-warning">WARNING</span>
                     {:else}
                       <span class="punct-chip punct-early">EARLY</span>
                     {/if}
@@ -388,6 +390,7 @@
     font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
   }
   .punct-early { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+  .punct-warning { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
   .punct-towards { background: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc; }
   .punct-late { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
 

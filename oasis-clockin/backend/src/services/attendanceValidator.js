@@ -140,16 +140,24 @@ function calculatePunctuality({ activeSession, targetLocation, org, currentTime 
   const scheduledTotalMinutes = scheduledHour * 60 + scheduledMinute;
   const diffMinutes = currentTotalMinutes - scheduledTotalMinutes;
 
-  const graceMinutes = (org && org.grace_period_minutes != null) ? org.grace_period_minutes : 15;
-  const earlyThreshold = (org && org.early_threshold_minutes != null) ? org.early_threshold_minutes : 10;
+  // Punctuality threshold ranges:
+  // Early:   7:00am - 8:30am (up to 8:39am) -> 'EARLY'
+  // Warning: 8:40am - 9:15am -> 'WARNING'
+  // Late:    9:16am - 5:00pm -> 'LATE'
+  const warningStartOffset = 10; // 08:40 AM (8:30 + 10 mins)
+  const warningEndOffset = 45;   // 09:15 AM (8:30 + 45 mins)
 
   let punctuality = 'EARLY';
   let punctualityLabel = 'Early';
   let isLate = false;
 
-  if (diffMinutes <= graceMinutes) {
+  if (diffMinutes < warningStartOffset) {
     punctuality = 'EARLY';
     punctualityLabel = 'Early';
+    isLate = false;
+  } else if (diffMinutes <= warningEndOffset) {
+    punctuality = 'WARNING';
+    punctualityLabel = 'Warning';
     isLate = false;
   } else {
     punctuality = 'LATE';

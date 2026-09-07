@@ -615,6 +615,7 @@ input:focus { border-color: var(--blue-mid); box-shadow: 0 0 0 3px rgba(50, 240,
   vertical-align: middle;
 }
 .punct-early { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+.punct-warning { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
 .punct-towards { background: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc; }
 .punct-late { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
 

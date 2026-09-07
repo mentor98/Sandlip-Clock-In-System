@@ -238,13 +238,28 @@ function performLocalVerifiedAttendance(payload) {
   }
 
   // 3. Determine punctuality based on local device time
+  // Early:   7:00am - 8:30am (up to 8:39am) -> 'EARLY'
+  // Warning: 8:40am - 9:15am -> 'WARNING'
+  // Late:    9:16am - 5:00pm -> 'LATE'
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const sessionStartMinutes = 8 * 60 + 30; // 08:30 AM standard session start
-  const lateGraceMinutes = 15;
-  const isLate = currentMinutes > (sessionStartMinutes + lateGraceMinutes);
-  const punctuality = isLate ? 'LATE' : 'EARLY';
-  const punctualityLabel = isLate ? 'Late' : 'Early';
+  let punctuality = 'EARLY';
+  let punctualityLabel = 'Early';
+  let isLate = false;
+
+  if (currentMinutes < 8 * 60 + 40) {
+    punctuality = 'EARLY';
+    punctualityLabel = 'Early';
+    isLate = false;
+  } else if (currentMinutes <= 9 * 60 + 15) {
+    punctuality = 'WARNING';
+    punctualityLabel = 'Warning';
+    isLate = false;
+  } else {
+    punctuality = 'LATE';
+    punctualityLabel = 'Late';
+    isLate = true;
+  }
 
   // 4. Save to local attendance history
   const record = {
@@ -985,8 +1000,8 @@ async function loadHistory() {
     
     const iconSvg = isIn ? getSvg('clockIn', 16, '#065f46') : getSvg('clockOut', 16, '#475569');
 
-    const punct = (row.punctuality === 'LATE' || row.is_late) ? 'LATE' : 'EARLY';
-    const punctualityClass = punct === 'LATE' ? 'punct-late' : 'punct-early';
+    const punct = (row.punctuality === 'LATE' || row.is_late) ? 'LATE' : (row.punctuality === 'WARNING' ? 'WARNING' : 'EARLY');
+    const punctualityClass = punct === 'LATE' ? 'punct-late' : (punct === 'WARNING' ? 'punct-warning' : 'punct-early');
     const punctualityBadge = isIn ? `
       <span class="punct-pill ${punctualityClass}">${punct}</span>
     ` : '';
@@ -1450,7 +1465,7 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
 
   const badgeEl = document.getElementById('modal-success-badge');
   if (badgeEl) {
-    const punct = (res.punctuality === 'LATE' || res.isLate) ? 'LATE' : 'EARLY';
+    const punct = (res.punctuality === 'LATE' || res.isLate) ? 'LATE' : (res.punctuality === 'WARNING' ? 'WARNING' : 'EARLY');
     badgeEl.textContent = `ATTENDANCE CONFIRMED · ${punct}`;
   }
 
@@ -1467,8 +1482,9 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
   const punctEl = document.getElementById('modal-success-punctuality');
   if (punctEl) {
     const isLate = Boolean(res.isLate || res.punctuality === 'LATE');
-    const punctClass = isLate ? 'punct-late' : 'punct-early';
-    const punctText = isLate ? 'Late' : 'Early';
+    const isWarning = Boolean(!isLate && res.punctuality === 'WARNING');
+    const punctClass = isLate ? 'punct-late' : (isWarning ? 'punct-warning' : 'punct-early');
+    const punctText = isLate ? 'Late' : (isWarning ? 'Warning' : 'Early');
     punctEl.innerHTML = `<span class="punct-pill ${punctClass}">${punctText}</span>`;
   }
 
@@ -1542,10 +1558,10 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
       showVerificationCard({
         status: res.status || 'VERIFIED',
         score: res.riskScore != null ? res.riskScore : 100,
-        punctuality: (res.punctuality === 'LATE' || res.isLate) ? 'LATE' : 'EARLY',
-        punctualityLabel: (res.punctuality === 'LATE' || res.isLate) ? 'Late' : 'Early',
+        punctuality: (res.punctuality === 'LATE' || res.isLate) ? 'LATE' : (res.punctuality === 'WARNING' ? 'WARNING' : 'EARLY'),
+        punctualityLabel: (res.punctuality === 'LATE' || res.isLate) ? 'Late' : (res.punctuality === 'WARNING' ? 'Warning' : 'Early'),
         isLate: res.isLate,
-        message: `Attendance confirmed! Dynamic QR, hardware MAC, and classroom geofence verified. Recorded as ${(res.isLate || res.punctuality === 'LATE') ? 'Late' : 'Early'}.`,
+        message: `Attendance confirmed! Dynamic QR, hardware MAC, and classroom geofence verified. Recorded as ${(res.isLate || res.punctuality === 'LATE') ? 'Late' : (res.punctuality === 'WARNING' ? 'Warning' : 'Early')}.`,
         checks: res.checks,
       });
     };
@@ -1776,7 +1792,7 @@ async function handleQrScanned(data) {
         bannerEl.className = 'hud-banner success';
         bannerEl.textContent = attendance_type === 'clock_out'
           ? `Clock-out recorded! ${res.student?.full_name || resolvedStudentId} clocked out for today.`
-          : `All 4 security layers verified! ${res.student?.full_name || resolvedStudentId} marked as ${(res.isLate || res.punctuality === 'LATE') ? 'Late' : 'Early'}. Dropped into Live Attendance in realtime!`;
+          : `All 4 security layers verified! ${res.student?.full_name || resolvedStudentId} marked as ${(res.isLate || res.punctuality === 'LATE') ? 'Late' : (res.punctuality === 'WARNING' ? 'Warning' : 'Early')}. Dropped into Live Attendance in realtime!`;
       }
 
       // Store student & session state
