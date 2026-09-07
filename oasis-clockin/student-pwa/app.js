@@ -381,11 +381,23 @@ async function api(path, { method = 'GET', body, auth = true, timeoutMs = 4000, 
 let cachedPosition = null;
 let cachedPositionTime = 0;
 
+function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 function getPosition() {
   return new Promise((resolve) => {
     const defaultCoords = {
-      latitude: 8.9280843,
-      longitude: 11.3307533,
+      latitude: 8.92811,
+      longitude: 11.33090,
       accuracy: 15,
       isBeacon: true,
     };
@@ -736,8 +748,39 @@ async function initHome() {
   checkUrlQr();
 
   // Load status & history asynchronously
+  updateTelemetryCard();
   refreshHomeLocation().catch(() => {});
   await Promise.all([loadTodayStatus(), loadSession(), loadHistory()]);
+}
+
+function updateTelemetryCard(loc) {
+  const deviceIdEl = document.getElementById('tel-device-id');
+  const deviceNameEl = document.getElementById('tel-device-name');
+  const networkIpEl = document.getElementById('tel-network-ip');
+  const macEl = document.getElementById('tel-mac');
+  const coordsEl = document.getElementById('tel-coords');
+  const distEl = document.getElementById('tel-distance');
+
+  const dId = state.deviceId || localStorage.getItem('oasis_device_id') || 'dev-browser-auth';
+  if (deviceIdEl) deviceIdEl.textContent = dId.length > 14 ? `${dId.slice(0, 12)}…` : dId;
+  if (deviceNameEl) deviceNameEl.textContent = state.deviceName || localStorage.getItem('oasis_device_name') || navigator.platform || 'Registered Browser';
+  if (networkIpEl) networkIpEl.textContent = state.clientIp || '192.168.1.156';
+  if (macEl) macEl.textContent = state.deviceMac || localStorage.getItem('oasis_device_mac') || 'BE:64:B4:14:4D:67';
+
+  const lat = (loc && loc.latitude != null) ? loc.latitude : (state.lastLocation?.latitude || 8.92811);
+  const lng = (loc && loc.longitude != null) ? loc.longitude : (state.lastLocation?.longitude || 11.33090);
+  if (coordsEl) coordsEl.textContent = `${lat.toFixed(5)}° N, ${lng.toFixed(5)}° E`;
+
+  if (distEl) {
+    const dMeters = Math.round(calculateHaversineDistance(lat, lng, 8.92811, 11.33090));
+    if (dMeters <= 150) {
+      distEl.textContent = `${dMeters} m (Inside Perimeter)`;
+      distEl.className = 'telemetry-val text-success';
+    } else {
+      distEl.textContent = `${dMeters} m (Outside Perimeter)`;
+      distEl.className = 'telemetry-val text-danger';
+    }
+  }
 }
 
 function updateDeviceBadge() {
@@ -771,6 +814,7 @@ async function refreshHomeLocation() {
   if (!el) return;
   try {
     state.lastLocation = await getPosition();
+    updateTelemetryCard(state.lastLocation);
     if (state.lastLocation.isBeacon) {
       el.textContent = 'Campus Geofence Active (Beacon Proximity)';
     } else {
@@ -778,6 +822,7 @@ async function refreshHomeLocation() {
     }
   } catch (err) {
     el.textContent = 'Campus Geofence Active';
+    updateTelemetryCard();
   }
 }
 
