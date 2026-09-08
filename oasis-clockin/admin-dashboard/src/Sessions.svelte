@@ -41,8 +41,8 @@
   async function load() {
     try {
       const [sessRes, locRes] = await Promise.all([
-        api(`/sessions?_t=${Date.now()}`),
-        api(`/admin/locations?_t=${Date.now()}`),
+        api('/sessions'),
+        api('/admin/locations'),
       ]);
       sessions = (sessRes.sessions || []).sort((a, b) => new Date(b.started_at || b.created_at) - new Date(a.started_at || a.created_at));
       locations = locRes.locations || [];
@@ -68,39 +68,18 @@
     if (viewingSession) viewAttendance(viewingSession);
   });
 
-  const handleRealtimeSession = (payload) => {
-    if (!payload) return;
-    const ev = String(payload.eventType || payload.action || '').toUpperCase();
-    const rec = payload.record || payload.session;
-    const recId = rec?.id || payload.deletedId;
-
-    if (ev === 'DELETE' && recId) {
-      sessions = sessions.filter(s => String(s.id) !== String(recId));
-      if (qrSession && String(qrSession.id) === String(recId)) closeLiveQr();
-      if (viewingSession && String(viewingSession.id) === String(recId)) viewingSession = null;
-    } else if (ev === 'INSERT' && rec?.id) {
-      if (String(rec.status).toUpperCase() === 'ACTIVE') {
-        sessions = sessions.map(s => String(s.status).toUpperCase() === 'ACTIVE' ? { ...s, status: 'CLOSED' } : s);
-      }
-      sessions = [rec, ...sessions.filter(s => String(s.id) !== String(rec.id))];
-    } else if (ev === 'UPDATE' && rec?.id) {
-      sessions = sessions.map(s => String(s.id) === String(rec.id) ? { ...s, ...rec } : s);
-    }
-    debouncedLoad();
-  };
-
-  const unsubSessions = subscribeTable('sessions', '*', handleRealtimeSession);
-  const unsubAttSessions = subscribeTable('attendance_sessions', '*', handleRealtimeSession);
-  const sessionPollInterval = setInterval(debouncedLoad, 4000);
+  const unsubSessions = subscribeTable('sessions', '*', debouncedLoad);
 
   onDestroy(() => {
     clearTimeout(loadTimer);
-    clearInterval(sessionPollInterval);
     unsub();
     unsubSessions();
-    unsubAttSessions();
     clearInterval(qrTimer);
     clearInterval(autoRefreshTimer);
+    if (liveSse) {
+      liveSse.close();
+      liveSse = null;
+    }
   });
 
   async function startSession() {
@@ -114,27 +93,22 @@
       });
       successMsg = `Session "${res.session.title}" started.`;
       const createdSession = res.session;
-      // Optimistic local state update: close prior active session and prepend newly created
-      sessions = sessions.map(s => String(s.status).toUpperCase() === 'ACTIVE' ? { ...s, status: 'CLOSED', closed_at: new Date().toISOString() } : s);
-      sessions = [createdSession, ...sessions.filter(s => String(s.id) !== String(createdSession.id))];
       title = ''; locationId = ''; endsAt = '';
-      openLiveQr(createdSession);
       await load();
+      // Auto open live QR projector for this active session
+      openLiveQr(createdSession);
     } catch (e) { error = e.message; }
     finally { loading = false; }
   }
 
   async function closeSession(s) {
     error = ''; successMsg = '';
-    const targetId = s.id;
-    // Optimistic close in UI
-    sessions = sessions.map(sess => String(sess.id) === String(targetId) ? { ...sess, status: 'CLOSED', closed_at: new Date().toISOString() } : sess);
     try {
-      await api(`/sessions/${targetId}/close`, { method: 'PATCH' });
+      await api(`/sessions/${s.id}/close`, { method: 'PATCH' });
       successMsg = `Session "${s.title}" closed.`;
-      if (qrSession && String(qrSession.id) === String(targetId)) closeLiveQr();
-      await load();
-    } catch (e) { error = e.message; await load(); }
+      if (qrSession?.id === s.id) closeLiveQr();
+      load();
+    } catch (e) { error = e.message; }
   }
 
   function promptDelete(s) {
@@ -144,21 +118,16 @@
   async function confirmDeleteSession() {
     if (!sessionToDelete) return;
     const s = sessionToDelete;
-    const targetId = s.id;
     deletingSession = true;
     error = '';
-    // Optimistic delete: immediately remove from UI with 0ms latency
-    sessions = sessions.filter((sess) => String(sess.id) !== String(targetId));
-    if (qrSession && String(qrSession.id) === String(targetId)) closeLiveQr();
-    if (viewingSession && String(viewingSession.id) === String(targetId)) viewingSession = null;
-    sessionToDelete = null;
     try {
-      await api(`/sessions/${targetId}`, { method: 'DELETE' });
+      await api(`/sessions/${s.id}`, { method: 'DELETE' });
       successMsg = `Session "${s.title}" deleted successfully.`;
+      if (qrSession?.id === s.id) closeLiveQr();
+      sessionToDelete = null;
       await load();
     } catch (e) {
       error = e.message;
-      await load();
     } finally {
       deletingSession = false;
     }
@@ -184,53 +153,81 @@
     await generateLiveQr(s);
     await loadLiveScans(s);
     clearInterval(autoRefreshTimer);
-    // Gentle 15-second fallback poll (instant scans arrive live via shared real-time stream)
     autoRefreshTimer = setInterval(() => {
       if (qrSession) loadLiveScans(qrSession);
-    }, 15000);
+    }, 2000);
+
+    // Connect real-time Server-Sent Events stream for instantaneous zero-latency updates
+    if (typeof EventSource !== 'undefined') {
+      try {
+        if (liveSse) {
+          liveSse.close();
+          liveSse = null;
+        }
+        const adminTok = getAdminSession();
+        const sseUrl = `/api/sessions/${s.id}/stream` + (adminTok ? `?auth=${encodeURIComponent(adminTok)}` : '');
+        liveSse = new EventSource(sseUrl);
+        const handleIncomingScan = (item) => {
+          if (!item || !qrSession) return;
+          if (item.session_id && String(item.session_id) !== String(qrSession.id)) return;
+          const exists = liveScans.some(existing => existing.id === item.id);
+          if (!exists) {
+            liveScans = [item, ...liveScans];
+          } else {
+            liveScans = liveScans.map(existing => existing.id === item.id ? item : existing);
+          }
+        };
+
+        liveSse.addEventListener('attendance', (e) => {
+          try {
+            const item = JSON.parse(e.data);
+            handleIncomingScan(item);
+          } catch (_parseErr) {
+            if (qrSession) loadLiveScans(qrSession);
+          }
+        });
+
+        liveSse.onmessage = (e) => {
+          try {
+            const item = JSON.parse(e.data);
+            handleIncomingScan(item);
+          } catch (_) {}
+        };
+        liveSse.onerror = () => {
+          // Keep running polling fallback seamlessly
+        };
+      } catch (err) {
+        console.warn('Realtime SSE setup notice:', err);
+      }
+    }
   }
 
-  async function generateLiveQr(s, withAutoRotate = autoRotate) {
+  async function generateLiveQr(s) {
     qrGenerating = true;
     error = '';
     clearInterval(qrTimer);
-    qrTimer = null;
     try {
       let res;
       try {
-        res = await api(`/admin/sessions/${s.id}/generate-qr`, {
-          method: 'POST',
-          body: { auto_rotate: withAutoRotate },
-        });
+        res = await api(`/admin/sessions/${s.id}/generate-qr`, { method: 'POST' });
       } catch (_e1) {
-        res = await api(`/sessions/${s.id}/generate-qr`, {
-          method: 'POST',
-          body: { auto_rotate: withAutoRotate },
-        });
+        res = await api(`/sessions/${s.id}/generate-qr`, { method: 'POST' });
       }
       qrSrc = `data:image/png;base64,${res.qr_png_base64}`;
+      qrExpiry = res.expires_in_seconds || 25;
       qrAdminIp = res.admin_ip || '127.0.0.1';
 
-      if (withAutoRotate) {
-        qrExpiry = res.expires_in_seconds || 25;
-        qrTimer = setInterval(() => {
-          if (!autoRotate) {
-            clearInterval(qrTimer);
-            qrTimer = null;
-            return;
+      qrTimer = setInterval(() => {
+        qrExpiry -= 1;
+        if (qrExpiry <= 0) {
+          clearInterval(qrTimer);
+          if (autoRotate && qrSession) {
+            generateLiveQr(qrSession);
+          } else {
+            qrSrc = '';
           }
-          qrExpiry -= 1;
-          if (qrExpiry <= 0) {
-            clearInterval(qrTimer);
-            qrTimer = null;
-            if (autoRotate && qrSession) {
-              generateLiveQr(qrSession, true);
-            }
-          }
-        }, 1000);
-      } else {
-        qrExpiry = 0;
-      }
+        }
+      }, 1000);
     } catch (e) {
       error = e.message;
     } finally {
@@ -238,27 +235,13 @@
     }
   }
 
-  async function toggleAutoRotate() {
-    autoRotate = !autoRotate;
-    if (autoRotate) {
-      // Re-enabled auto-rotate: generate dynamic QR and start 25s loop
-      if (qrSession) {
-        await generateLiveQr(qrSession, true);
-      }
-    } else {
-      // Paused auto-rotate: stop countdown and keep a static QR code active
-      clearInterval(qrTimer);
-      qrTimer = null;
-      if (qrSession) {
-        await generateLiveQr(qrSession, false);
-      }
-    }
-  }
-
   function closeLiveQr() {
     clearInterval(qrTimer);
-    qrTimer = null;
     clearInterval(autoRefreshTimer);
+    if (liveSse) {
+      liveSse.close();
+      liveSse = null;
+    }
     qrSession = null;
     qrSrc = '';
     qrExpiry = 0;
@@ -323,26 +306,19 @@
         <div class="projector-body">
           <div class="qr-col">
             <div class="qr-box">
-              {#if qrSrc}
-                <img src={qrSrc} alt="Classroom QR Code" class="qr-image-lg" />
-                {#if autoRotate && qrExpiry > 0}
-                  <div class="countdown-bar-wrap">
-                    <div class="countdown-bar" style="width: {(Math.max(0, qrExpiry) / 25) * 100}%"></div>
-                  </div>
-                  <div class="expiry-indicator rotating">
-                    <Icon name="refresh" size={14} />
-                    <span>Auto-rotating dynamically in <strong>{qrExpiry}s</strong></span>
-                  </div>
-                {:else if !autoRotate}
-                  <div class="expiry-indicator paused">
-                    <Icon name="pause" size={13} color="#b45309" />
-                    <span>Auto-rotation <strong>Paused</strong> · Static QR</span>
-                  </div>
-                {/if}
+              {#if qrSrc && qrExpiry > 0}
+                <img src={qrSrc} alt="Classroom Dynamic QR Code" class="qr-image-lg" />
+                <div class="countdown-bar-wrap">
+                  <div class="countdown-bar" style="width: {(qrExpiry / 25) * 100}%"></div>
+                </div>
+                <div class="expiry-indicator">
+                  <Icon name="refresh" size={14} />
+                  <span>Rotating dynamically in <strong>{qrExpiry}s</strong></span>
+                </div>
               {:else}
                 <div class="qr-placeholder">
                   <Icon name="clock" size={40} color="#94a3b8" />
-                  <p>{qrGenerating ? 'Generating QR code…' : 'No QR available'}</p>
+                  <p>Rotating token…</p>
                 </div>
               {/if}
             </div>
@@ -354,7 +330,7 @@
               </div>
               <div class="sec-row">
                 <Icon name="smartphone" size={14} color="#0284c7" />
-                <span>Device MAC / Hardware ID Bound &amp; Checked</span>
+                <span>Device MAC / Hardware ID Bound & Checked</span>
               </div>
               <div class="sec-row">
                 <Icon name="map-pin" size={14} color="#0f766e" />
@@ -363,24 +339,14 @@
             </div>
 
             <div class="projector-controls">
-              <button class="btn btn-sm btn-primary" on:click={() => generateLiveQr(qrSession, autoRotate)} disabled={qrGenerating}>
+              <button class="btn btn-sm btn-primary" on:click={() => generateLiveQr(qrSession)} disabled={qrGenerating}>
                 <Icon name="refresh" size={13} />
                 <span>{qrGenerating ? 'Rotating…' : 'Rotate QR Now'}</span>
               </button>
-              <button
-                type="button"
-                class="toggle-switch-btn {autoRotate ? 'on' : 'off'}"
-                on:click={toggleAutoRotate}
-                aria-pressed={autoRotate}
-                title={autoRotate ? 'Click to stop dynamic auto-rotation' : 'Click to resume dynamic auto-rotation (25s)'}
-              >
-                <span class="switch-slider">
-                  <span class="switch-knob"></span>
-                </span>
-                <span class="switch-text">
-                  Auto-rotate: <strong>{autoRotate ? '25s' : 'Off'}</strong>
-                </span>
-              </button>
+              <label class="toggle-label">
+                <input type="checkbox" bind:checked={autoRotate} />
+                <span>Auto-rotate (25s)</span>
+              </label>
             </div>
           </div>
 
@@ -408,7 +374,7 @@
                     <div class="scan-left">
                       <div class="scan-title-line">
                         <span class="scan-name">{scan.students?.full_name || 'Student'}</span>
-                        <span class="badge-punctuality {scan.is_late ? 'late' : (scan.punctuality === 'WARNING' ? 'warning' : 'present')}">
+                        <span class="badge-punctuality {scan.is_late ? 'late' : 'present'}">
                           {scan.is_late ? 'LATE' : (scan.punctuality || 'PRESENT')}
                         </span>
                       </div>
@@ -637,65 +603,40 @@
   .notice.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 
   .table-wrap {
-    background: white; border: 1px solid #e2e8f0; border-radius: 12px;
+    background: white; border: 1px solid #e2e8f0; border-radius: 14px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
     width: 100%;
   }
-  .table-wrap::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
-  }
   .table-header-bar {
-    padding: 12px 16px; border-bottom: 1px solid #f1f5f9;
+    padding: 16px 20px; border-bottom: 1px solid #f1f5f9;
     display: flex; align-items: center; justify-content: space-between;
   }
-  .table-header-bar h3 { margin: 0; font-size: 14px; font-weight: 700; color: #0f172a; }
-  .count-badge { font-size: 11px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 2px 7px; border-radius: 999px; }
+  .table-header-bar h3 { margin: 0; font-size: 15px; font-weight: 700; color: #0f172a; }
+  .count-badge { font-size: 12px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 2px 8px; border-radius: 999px; }
 
   table {
     width: 100%;
+    min-width: 680px;
     border-collapse: collapse;
-    font-size: 12px;
-    table-layout: auto;
+    font-size: 13.5px;
   }
   th {
-    background: #f8fafc; text-align: left; padding: 8px 10px;
-    color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase;
-    letter-spacing: 0.03em; border-bottom: 1px solid #e2e8f0;
-    white-space: nowrap;
+    background: #f8fafc; text-align: left; padding: 12px 20px;
+    color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
   }
-  td {
-    padding: 7px 10px;
-    border-bottom: 1px solid #f1f5f9;
-    color: #334155;
-    white-space: nowrap;
-    font-size: 12px;
-  }
+  td { padding: 13px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
 
   .bold { font-weight: 600; color: #0f172a; }
-  .muted { color: #94a3b8; font-size: 11.5px; }
-  .mono { font-family: monospace; font-size: 11.5px; }
-  .pad-16 { padding: 20px; text-align: center; }
+  .muted { color: #94a3b8; }
+  .mono { font-family: monospace; font-size: 12px; }
+  .pad-16 { padding: 24px; text-align: center; }
 
-  .actions {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    white-space: nowrap;
-    flex-wrap: nowrap;
-  }
-  .actions :global(.btn) {
-    flex-shrink: 0;
-    white-space: nowrap;
-    padding: 4px 8px;
-    font-size: 11px;
-  }
+  .actions { display: flex; gap: 6px; align-items: center; }
 
   .pill {
     display: inline-block; padding: 3px 9px; border-radius: 999px;
@@ -731,46 +672,16 @@
     display: flex; justify-content: space-between; align-items: flex-start;
   }
   .projector-header {
-    background: linear-gradient(135deg, #32F000 0%, #0db872 30%, #0284c7 68%, #073B78 100%);
-    color: #ffffff;
-    box-shadow: 0 4px 14px rgba(7, 59, 120, 0.35);
-    border-bottom: 1px solid rgba(7, 59, 120, 0.25);
+    background: #071527; color: white; border-bottom: 1px solid rgba(50, 240, 0, 0.2);
   }
-  .projector-header h3 {
-    color: #ffffff;
-    font-weight: 800;
-    text-shadow: 0 1px 2px rgba(7, 59, 120, 0.4);
-    margin: 0;
-  }
-  .projector-header .meta {
-    color: rgba(255, 255, 255, 0.92);
-    text-shadow: 0 1px 2px rgba(7, 59, 120, 0.3);
-  }
-  .projector-header .meta strong {
-    color: #ffffff;
-    font-weight: 700;
-  }
+  .projector-header h3 { color: white; }
+  .projector-header .meta { color: #94a3b8; }
   .badge-live-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
   .pulse-live {
-    width: 8px; height: 8px; border-radius: 50%; background: #ffffff;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.9);
+    width: 8px; height: 8px; border-radius: 50%; background: #32F000;
+    box-shadow: 0 0 10px #32F000;
   }
-  .live-title {
-    font-size: 11px; font-weight: 800; color: #ffffff; letter-spacing: 0.05em;
-    text-shadow: 0 1px 2px rgba(7, 59, 120, 0.4);
-  }
-  .projector-header .close-btn {
-    background: rgba(255, 255, 255, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    color: #ffffff;
-    backdrop-filter: blur(4px);
-    transition: all 0.15s ease;
-  }
-  .projector-header .close-btn:hover {
-    background: rgba(255, 255, 255, 0.35);
-    color: #ffffff;
-    border-color: rgba(255, 255, 255, 0.5);
-  }
+  .live-title { font-size: 11px; font-weight: 800; color: #32F000; letter-spacing: 0.05em; }
 
   .projector-body {
     display: grid; grid-template-columns: 1fr 1.15fr; gap: 20px;
@@ -794,13 +705,6 @@
   .expiry-indicator {
     display: flex; align-items: center; gap: 6px; font-size: 12px; color: #475569; font-weight: 600;
   }
-  .expiry-indicator.paused {
-    background: #fffbeb;
-    color: #92400e;
-    border: 1px solid #fde68a;
-    padding: 3px 10px;
-    border-radius: 999px;
-  }
   .security-meta-card {
     background: white; border-radius: 10px; padding: 12px 14px;
     border: 1px solid #e2e8f0; font-size: 11.5px; width: 100%; max-width: 320px;
@@ -810,63 +714,10 @@
   .sec-row code { font-size: 11px; background: #f1f5f9; padding: 1px 4px; border-radius: 4px; }
 
   .projector-controls {
-    display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 320px; gap: 10px;
+    display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 320px;
   }
-  .toggle-switch-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    padding: 5px 10px;
-    cursor: pointer;
-    font-size: 11.5px;
-    font-weight: 600;
-    color: #475569;
-    transition: all 0.2s ease;
-    user-select: none;
-    white-space: nowrap;
-  }
-  .toggle-switch-btn:hover {
-    border-color: #94a3b8;
-    background: #f1f5f9;
-  }
-  .toggle-switch-btn.on {
-    background: #ecfdf5;
-    border-color: #86efac;
-    color: #065f46;
-  }
-  .toggle-switch-btn.off {
-    background: #fffbeb;
-    border-color: #fde68a;
-    color: #92400e;
-  }
-  .switch-slider {
-    width: 28px;
-    height: 16px;
-    background: #cbd5e1;
-    border-radius: 999px;
-    position: relative;
-    transition: background 0.2s ease;
-    flex-shrink: 0;
-  }
-  .toggle-switch-btn.on .switch-slider {
-    background: #10b981;
-  }
-  .switch-knob {
-    width: 12px;
-    height: 12px;
-    background: white;
-    border-radius: 50%;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-  }
-  .toggle-switch-btn.on .switch-knob {
-    transform: translateX(12px);
+  .toggle-label {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer;
   }
 
   .scans-col {
@@ -910,9 +761,6 @@
   .badge-punctuality.present {
     background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0;
   }
-  .badge-punctuality.warning {
-    background: #fffbeb; color: #b45309; border: 1px solid #fcd34d;
-  }
   .badge-punctuality.late {
     background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;
   }
@@ -937,16 +785,10 @@
     max-height: 360px;
     overflow-y: auto;
     overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .modal-table-wrap::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
+    -webkit-overflow-scrolling: touch;
   }
   .modal-table-wrap table {
-    width: 100%;
+    min-width: 540px;
   }
   .modal-actions {
     padding: 14px 22px; border-top: 1px solid #e2e8f0;

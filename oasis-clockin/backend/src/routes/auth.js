@@ -2,7 +2,7 @@ const express = require('express');
 const { supabaseAdmin } = require('../config/supabase');
 const { signSession } = require('../config/jwt');
 const { requireAuth } = require('../middleware/auth');
-const { validateAttendance, validateAndRecordAttendance, registerStudentScanned } = require('../services/attendanceValidator');
+const { validateAttendance, registerStudentScanned } = require('../services/attendanceValidator');
 const eventBus = require('../utils/eventBus');
 
 const router = express.Router();
@@ -50,9 +50,7 @@ router.get('/verify-student', async (req, res) => {
     if (!student) {
       return res.status(404).json({
         exists: false,
-        error: "You don't have an account. Please register to get an ID",
-        notFound: true,
-        attemptedId: rawId,
+        error: `Student ID "${rawId}" not found in database. Please verify your Matric ID.`,
       });
     }
 
@@ -72,171 +70,52 @@ router.get('/verify-student', async (req, res) => {
   }
 });
 
-// Helper: Auto-generate the next student ID based on the last student ID on the admin dashboard
-async function getNextStudentIdFromSupabase() {
-  try {
-    const { data: students, error } = await supabaseAdmin
-      .from('students')
-      .select('student_id, full_name, created_at')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.warn('Error fetching students for next-id:', error.message);
-    }
-
-    const studentList = Array.isArray(students) ? students : [];
-    const defaultPrefix = 'SAN-2026-';
-    const defaultPad = 3;
-
-    if (studentList.length === 0) {
-      return {
-        nextId: `${defaultPrefix}001`,
-        lastStudentId: null,
-        lastStudentName: null,
-        totalStudents: 0,
-      };
-    }
-
-    // The most recently enrolled student on the admin dashboard (ordered by created_at DESC)
-    const lastStudent = studentList[0];
-    const lastSid = (lastStudent && lastStudent.student_id) ? String(lastStudent.student_id).trim() : '';
-
-    let prefix = defaultPrefix;
-    let padLength = defaultPad;
-    let maxNum = 0;
-
-    // Detect format and prefix from the last student ID on admin
-    if (lastSid) {
-      const match = lastSid.match(/^(.*?)(\d+)$/);
-      if (match) {
-        prefix = match[1];
-        padLength = Math.max(match[2].length, 3);
-        const lastVal = parseInt(match[2], 10);
-        if (!isNaN(lastVal)) {
-          maxNum = lastVal;
-        }
-      }
-    }
-
-    // Scan all existing student records to guarantee no duplicate ID collision
-    for (const s of studentList) {
-      if (!s.student_id) continue;
-      const sid = String(s.student_id).trim();
-      const m = sid.match(/^(.*?)(\d+)$/);
-      if (m && m[1].toLowerCase() === prefix.toLowerCase()) {
-        const val = parseInt(m[2], 10);
-        if (!isNaN(val) && val > maxNum) {
-          maxNum = val;
-        }
-      }
-    }
-
-    const nextNum = maxNum + 1;
-    const nextId = `${prefix}${String(nextNum).padStart(padLength, '0')}`;
-
-    return {
-      nextId,
-      lastStudentId: lastSid || null,
-      lastStudentName: lastStudent ? lastStudent.full_name : null,
-      totalStudents: studentList.length,
-    };
-  } catch (err) {
-    console.error('Error generating next student ID:', err);
-    return {
-      nextId: 'SAN-2026-001',
-      lastStudentId: null,
-      lastStudentName: null,
-      totalStudents: 0,
-    };
-  }
-}
-
-// GET /api/auth/next-id — Checks the last student ID on admin dashboard and returns next auto-generated student ID
+// GET /api/auth/next-id — Suggests next available sequential student ID for registration
 router.get('/next-id', async (_req, res) => {
-  const result = await getNextStudentIdFromSupabase();
-  res.json(result);
+  try {
+    const { data: students } = await supabaseAdmin
+      .from('students')
+      .select('student_id');
+
+    let maxNum = 16;
+    if (students && students.length > 0) {
+      students.forEach(s => {
+        if (s.student_id) {
+          const match = s.student_id.match(/SAN-2026-(\d+)/i) || s.student_id.match(/(\d+)/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (!isNaN(num) && num > maxNum) maxNum = num;
+          }
+        }
+      });
+    }
+    const nextNum = maxNum + 1;
+    const nextId = `SAN-2026-${String(nextNum).padStart(3, '0')}`;
+    res.json({ nextId });
+  } catch (err) {
+    res.json({ nextId: `SAN-2026-${Math.floor(100 + Math.random() * 900)}` });
+  }
 });
 
 function normalizeOrGenerateMac(mac) {
   if (mac && /^[0-9A-Fa-f:]{11,17}$/.test(String(mac).trim())) {
     return String(mac).trim().toUpperCase();
   }
-  const bytes = [];
-  bytes.push((Math.floor(Math.random() * 256) & 0xfe) | 0x02);
-  for (let i = 1; i < 6; i++) {
-    bytes.push(Math.floor(Math.random() * 256));
-  }
-  return bytes.map(b => b.toString(16).padStart(2, '0')).join(':').toUpperCase();
+  return 'BE:64:B4:14:4D:67';
 }
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   const { full_name, student_id, email, device_mac } = req.body || {};
-  let cleanId = student_id ? String(student_id).trim() : '';
-  if (!cleanId || cleanId.toUpperCase() === 'AUTO') {
-    const gen = await getNextStudentIdFromSupabase();
-    cleanId = gen.nextId;
-  }
-
-  if (!full_name || !cleanId || !email) {
+  if (!full_name || !student_id || !email) {
     return res.status(400).json({ error: 'full_name, student_id, and email are required.' });
   }
+
+  const cleanId = String(student_id).trim();
   const cleanEmail = String(email).trim().toLowerCase();
   const cleanName = String(full_name).trim();
   const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '192.168.1.156';
   const clientMac = normalizeOrGenerateMac(device_mac);
-
-  // ── DEVICE BINDING ENFORCEMENT: Strictly 1 Student Account per Physical Device ──
-  // Check if this device MAC is already registered/bound to another student account
-  if (clientMac) {
-    // 1. Check if another student has this MAC registered in 'students'
-    const { data: allStudents } = await supabaseAdmin
-      .from('students')
-      .select('id, student_id, full_name, registered_mac');
-
-    if (allStudents && Array.isArray(allStudents)) {
-      const conflictStudent = allStudents.find((s) => {
-        const sameMac = s.registered_mac && s.registered_mac.toUpperCase() === clientMac.toUpperCase();
-        const differentStudent = s.student_id && s.student_id.toLowerCase() !== cleanId.toLowerCase();
-        return sameMac && differentStudent;
-      });
-
-      if (conflictStudent) {
-        return res.status(403).json({
-          error: `Device Restriction: This device is already bound to student "${conflictStudent.full_name}" (${conflictStudent.student_id}). Each physical device can only be used by one student. Another student cannot create an account on this device.`,
-          code: 'DEVICE_ALREADY_BOUND',
-          bound_student_name: conflictStudent.full_name,
-          bound_student_id: conflictStudent.student_id,
-        });
-      }
-    }
-
-    // 2. Check if another student has an active device record with this MAC in 'devices'
-    const { data: allDevices } = await supabaseAdmin
-      .from('devices')
-      .select('id, student_id, mac_address, status, revoked_at, students(id, student_id, full_name)')
-      .is('revoked_at', null);
-
-    if (allDevices && Array.isArray(allDevices)) {
-      const conflictDevice = allDevices.find((d) => {
-        const sameMac = d.mac_address && d.mac_address.toUpperCase() === clientMac.toUpperCase();
-        const conflictSid = d.students?.student_id;
-        const differentStudent = conflictSid && conflictSid.toLowerCase() !== cleanId.toLowerCase();
-        return sameMac && differentStudent;
-      });
-
-      if (conflictDevice) {
-        const ownerName = conflictDevice.students?.full_name || 'Another Student';
-        const ownerId = conflictDevice.students?.student_id || 'Registered Student';
-        return res.status(403).json({
-          error: `Device Restriction: This hardware device is already registered to "${ownerName}" (${ownerId}). Each device can only create and bind a single student account.`,
-          code: 'DEVICE_ALREADY_BOUND',
-          bound_student_name: ownerName,
-          bound_student_id: ownerId,
-        });
-      }
-    }
-  }
 
   let student;
   const { data: existing } = await supabaseAdmin
@@ -442,7 +321,7 @@ router.post('/direct-login', async (req, res) => {
 
   if (!student) {
     return res.status(404).json({
-      error: "You don't have an account. Please register to get an ID",
+      error: `Student ID "${cleanId}" is not registered. First time here? Please register to get your Student ID.`,
       notFound: true,
       attemptedId: cleanId,
     });
@@ -495,7 +374,7 @@ router.post('/direct-login', async (req, res) => {
 
 // POST /api/auth/clockin-direct — Seamless 1-step direct Clock-In for student by ID
 router.post('/clockin-direct', async (req, res) => {
-  const { student_id, device_id, device_mac, latitude, longitude, accuracy, location_id, location_token, session_id, attendance_type = 'clock_in' } = req.body || {};
+  const { student_id, device_mac, latitude, longitude, accuracy, location_id, location_token, session_id, attendance_type = 'clock_in' } = req.body || {};
   if (!student_id) {
     return res.status(400).json({ error: 'student_id is required.' });
   }
@@ -522,7 +401,7 @@ router.post('/clockin-direct', async (req, res) => {
 
   if (!student) {
     return res.status(404).json({
-      error: "You don't have an account. Please register to get an ID",
+      error: `Student ID "${cleanId}" is not registered. First time here? Please register to get your Student ID.`,
       notFound: true,
       attemptedId: cleanId,
     });
@@ -564,109 +443,145 @@ router.post('/clockin-direct', async (req, res) => {
       .eq('id', device.id);
   }
 
-  const deviceId = device_id || (device ? device.id : 'default-device-id');
+  const deviceId = device ? device.id : 'default-device-id';
   const sessionToken = signSession({ studentId: student.id, role: 'student' });
-  const clientIp = req.ip || req.headers['x-forwarded-for'] || '192.168.1.156';
-  const resolvedMethod = req.body.clock_in_method || (location_token ? 'QR' : 'LOGIN');
+  const clientIp = req.ip || req.headers['x-forwarded-for'] || null;
 
-  // Authoritative validation and recording pipeline
-  const result = await validateAndRecordAttendance({
+  // Run validation engine
+  const result = await validateAttendance({
     studentId: student.id,
     deviceId,
-    deviceMac: device_mac || device?.mac_address || student.registered_mac,
-    latitude: latitude != null ? latitude : 8.92811,
-    longitude: longitude != null ? longitude : 11.33090,
+    deviceMac: device_mac || device?.mac_address,
+    latitude: latitude != null ? latitude : 8.9280843,
+    longitude: longitude != null ? longitude : 11.3307533,
     accuracy: accuracy || 15,
     locationId: location_id,
     locationToken: location_token,
     sessionId: session_id,
-    attendanceType: attendance_type || 'clock_in',
-    clockInMethod: resolvedMethod,
     clientIp,
-    userAgent: req.headers['user-agent'] || 'Direct Client',
-    devicePlatform: req.body.device_platform || 'web',
+    attendanceType: attendance_type,
   });
 
-  if (!result.approved) {
-    return res.status(result.statusCode || 403).json({
-      success: false,
-      error: result.error || 'Attendance verification failed.',
-      message: result.error || 'Attendance verification failed.',
+  // Record attendance row
+  let attendanceRecord = null;
+  if (result.approved) {
+    const targetSessionId = session_id || result.activeSession?.id || null;
+    const { data: row } = await supabaseAdmin
+      .from('attendance')
+      .insert({
+        student_id: student.id,
+        location_id: result.targetLocation?.id || null,
+        type: attendance_type,
+        recorded_at: new Date().toISOString(),
+        latitude: latitude != null ? latitude : 8.9280843,
+        longitude: longitude != null ? longitude : 11.3307533,
+        device_id: deviceId,
+        device_mac: device_mac || device?.mac_address || student.registered_mac || null,
+        session_id: targetSessionId,
+        risk_score: result.riskScore,
+        verification_status: result.status,
+        punctuality: result.punctuality || 'EARLY',
+        is_late: result.isLate || false,
+        ip_address: clientIp,
+        gps_accuracy: accuracy || 15,
+      })
+      .select()
+      .single();
+    attendanceRecord = row;
+
+    // Register single-use QR scan in memory registry
+    registerStudentScanned(student.id, targetSessionId, result.details?.qrNonce);
+
+    if (row) {
+      const studentPayload = {
+        id: student.id,
+        full_name: student.full_name,
+        student_id: student.student_id,
+        email: student.email,
+        registered_ip: student.registered_ip,
+        registered_mac: student.registered_mac,
+      };
+
+      eventBus.emit('attendance_recorded', {
+        sessionId: targetSessionId,
+        record: {
+          ...row,
+          students: studentPayload,
+        },
+      });
+
+      // Unified broadcast for Admin Dashboard real-time stream
+      eventBus.emit('realtime_event', {
+        table: 'attendance',
+        action: 'INSERT',
+        record: {
+          ...row,
+          students: studentPayload,
+          locations: { name: result.targetLocation?.name || 'Sandlip Oasis Campus' },
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      sessionToken,
+      deviceId,
+      student,
       status: result.status,
       riskScore: result.riskScore,
+      punctuality: result.punctuality,
+      punctualityLabel: result.punctualityLabel,
+      isLate: result.isLate,
       checks: result.checks,
       details: result.details,
-      criticalFailures: result.criticalFailures,
-      alreadyScanned: result.statusCode === 409,
-      noSessionCreated: result.noSessionCreated || false,
-      code: result.code || (result.noSessionCreated ? 'NO_SESSION_CREATED' : 'ATTENDANCE_FAILED'),
-      student: {
-        id: student.id,
-        student_id: student.student_id,
-        full_name: student.full_name,
-      },
+      distanceM: result.distanceM,
+      location_name: result.targetLocation?.name || 'Main Campus',
+      attendance: attendanceRecord,
     });
   }
 
-  return res.json({
-    success: true,
-    sessionToken,
-    deviceId,
-    student,
+  // Handle rejected verification / duplicate scan attempts
+  const isDuplicate = Boolean(result.checks?.duplicate) ||
+    (result.criticalFailures && result.criticalFailures.some(f => f.toLowerCase().includes('already') || f.toLowerCase().includes('once')));
+  const primaryError = (result.criticalFailures && result.criticalFailures[0]) || 'Attendance verification failed.';
+
+  try {
+    await supabaseAdmin.from('audit_log').insert({
+      student_id: student.id,
+      event_type: 'attendance_rejected',
+      detail: {
+        attendanceType: attendance_type,
+        reasons: result.criticalFailures,
+        checks: result.checks,
+        riskScore: result.riskScore,
+        status: result.status,
+        session_id: session_id || null,
+        isDuplicate,
+      },
+      created_at: new Date().toISOString(),
+    });
+    eventBus.emit('realtime_event', {
+      table: 'audit_log',
+      action: 'INSERT',
+    });
+  } catch (_) {}
+
+  return res.status(isDuplicate ? 409 : 403).json({
+    success: false,
+    error: primaryError,
+    message: primaryError,
     status: result.status,
     riskScore: result.riskScore,
-    punctuality: result.attendance.punctuality,
-    isLate: result.attendance.is_late,
     checks: result.checks,
     details: result.details,
-    distanceM: result.attendance.distance_meters,
-    location_name: result.attendance.location_name,
-    attendance: result.attendance,
+    criticalFailures: result.criticalFailures,
+    alreadyScanned: isDuplicate,
+    student: {
+      id: student.id,
+      student_id: student.student_id,
+      full_name: student.full_name,
+    },
   });
-});
-
-// POST /api/auth/clockin-qr — dedicated QR clock-in route
-router.post('/clockin-qr', async (req, res, next) => {
-  req.body.clock_in_method = 'QR';
-  // Forward to clockin-direct handler logic by finding route
-  next();
-}, async (req, res) => {
-  // Delegate to clockin-direct logic
-  const { student_id } = req.body || {};
-  if (!student_id) return res.status(400).json({ error: 'Student ID is required for QR clock-in.' });
-  // Call internal clockin flow
-  const { data: student } = await supabaseAdmin
-    .from('students')
-    .select('*')
-    .eq('student_id', String(student_id).trim())
-    .maybeSingle();
-
-  if (!student) {
-    return res.status(404).json({ error: 'Student not found.' });
-  }
-
-  const clientIp = req.ip || req.headers['x-forwarded-for'] || '192.168.1.156';
-  const result = await validateAndRecordAttendance({
-    studentId: student.id,
-    deviceId: req.body.device_id || 'qr-browser-device',
-    deviceMac: req.body.device_mac || student.registered_mac,
-    latitude: req.body.latitude != null ? req.body.latitude : 8.92811,
-    longitude: req.body.longitude != null ? req.body.longitude : 11.33090,
-    accuracy: req.body.accuracy || 15,
-    locationId: req.body.location_id,
-    locationToken: req.body.location_token,
-    sessionId: req.body.session_id,
-    attendanceType: req.body.attendance_type || 'clock_in',
-    clockInMethod: 'QR',
-    clientIp,
-    userAgent: req.headers['user-agent'] || 'QR Scanner',
-    devicePlatform: req.body.device_platform || 'web',
-  });
-
-  if (!result.approved) {
-    return res.status(result.statusCode || 403).json(result);
-  }
-  return res.json(result);
 });
 
 // POST /api/auth/direct-bind — direct device binding if WebAuthn is blocked in environment

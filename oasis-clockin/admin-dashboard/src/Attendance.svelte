@@ -24,9 +24,8 @@
     } catch {}
   }
 
-  async function load(showSpinner = false) {
-    if (showSpinner || records.length === 0) loading = true;
-    error = '';
+  async function load() {
+    loading = true; error = '';
     try {
       const params = new URLSearchParams();
       if (filterFrom) params.set('from', filterFrom);
@@ -51,9 +50,9 @@
   }
 
   loadLocations();
-  load(true);
+  load();
 
-  const unsubAttendance = subscribeTable('attendance', '*', () => load(false));
+  const unsubAttendance = subscribeTable('attendance', '*', () => load());
   onDestroy(() => unsubAttendance());
 
   function typeLabel(t) { return t === 'clock_in' ? 'Clock In' : 'Clock Out'; }
@@ -61,9 +60,9 @@
 
   $: totalIn = records.filter(r => r.type === 'clock_in').length;
   $: totalOut = records.filter(r => r.type === 'clock_out').length;
-  $: earlyCount = records.filter(r => r.type === 'clock_in' && r.punctuality === 'EARLY').length;
-  $: warningCount = records.filter(r => r.type === 'clock_in' && r.punctuality === 'WARNING').length;
-  $: lateCount = records.filter(r => r.type === 'clock_in' && (r.punctuality === 'LATE' || r.is_late)).length;
+  $: earlyCount = records.filter(r => r.punctuality === 'EARLY').length;
+  $: towardsCount = records.filter(r => r.punctuality === 'TOWARDS').length;
+  $: lateCount = records.filter(r => r.punctuality === 'LATE' || r.is_late).length;
   $: uniqueStudents = new Set(records.map(r => r.student_id)).size;
 </script>
 
@@ -92,9 +91,9 @@
         <label>Punctuality Status</label>
         <select bind:value={filterPunctuality}>
           <option value="">All Punctuality</option>
-          <option value="EARLY">Early (7:00am - 8:30am)</option>
-          <option value="WARNING">Warning (8:40am - 9:15am)</option>
-          <option value="LATE">Late (9:16am - 5:00pm)</option>
+          <option value="EARLY">Early Arrivals</option>
+          <option value="TOWARDS">Towards / On-Time</option>
+          <option value="LATE">Late Clock-Ins</option>
         </select>
       </div>
       <div class="field">
@@ -132,8 +131,8 @@
       <span class="stat-lbl">Early Arrivals</span>
     </div>
     <div class="stat">
-      <span class="stat-val punct-warning-txt">{warningCount}</span>
-      <span class="stat-lbl">Warning</span>
+      <span class="stat-val punct-towards-txt">{towardsCount}</span>
+      <span class="stat-lbl">Towards / On-Time</span>
     </div>
     <div class="stat">
       <span class="stat-val punct-late-txt">{lateCount}</span>
@@ -147,17 +146,13 @@
       <span class="stat-val clock-out">{totalOut}</span>
       <span class="stat-lbl">Clock Outs</span>
     </div>
-    <div class="stat">
-      <span class="stat-val">{uniqueStudents}</span>
-      <span class="stat-lbl">Unique Students</span>
-    </div>
   </div>
 
   {#if error}<div class="notice error">{error}</div>{/if}
 
   <!-- Table -->
   <div class="table-wrap">
-    {#if loading && records.length === 0}
+    {#if loading}
       <p class="muted center pad-24">Loading attendance logs…</p>
     {:else if records.length === 0}
       <div class="empty-state">
@@ -182,18 +177,14 @@
           {#each records as r}
             <tr>
               <td class="bold">{r.students?.full_name || '—'}</td>
-              <td class="nowrap-cell"><code>{r.students?.student_id || '—'}</code></td>
+              <td><code>{r.students?.student_id || '—'}</code></td>
               <td>{r.locations?.name || '—'}</td>
               <td><span class="pill {typeClass(r.type)}">{typeLabel(r.type)}</span></td>
               <td>
-                {#if r.type === 'clock_in'}
-                  {#if r.punctuality === 'LATE' || r.is_late}
-                    <span class="punct-pill punct-late">LATE</span>
-                  {:else if r.punctuality === 'WARNING'}
-                    <span class="punct-pill punct-warning">WARNING</span>
-                  {:else}
-                    <span class="punct-pill punct-early">EARLY</span>
-                  {/if}
+                {#if r.type === 'clock_in' && r.punctuality}
+                  <span class="punct-pill punct-{r.punctuality.toLowerCase()}">{r.punctuality}</span>
+                {:else if r.type === 'clock_in'}
+                  <span class="punct-pill punct-towards">RECORDED</span>
                 {:else}
                   <span class="muted">—</span>
                 {/if}
@@ -272,44 +263,30 @@
   .stat-lbl { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
 
   .table-wrap {
-    background: white; border: 1px solid #e2e8f0; border-radius: 12px;
+    background: white; border: 1px solid #e2e8f0; border-radius: 14px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
     width: 100%;
-  }
-  .table-wrap::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
   }
   table {
     width: 100%;
+    min-width: 780px;
     border-collapse: collapse;
-    font-size: 12px;
-    table-layout: auto;
+    font-size: 13.5px;
   }
   th {
-    background: #f8fafc; text-align: left; padding: 8px 10px;
-    color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase;
-    letter-spacing: 0.03em; border-bottom: 1px solid #e2e8f0;
-    white-space: nowrap;
+    background: #f8fafc; text-align: left; padding: 12px 20px;
+    color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
   }
-  td {
-    padding: 7px 10px;
-    border-bottom: 1px solid #f1f5f9;
-    color: #334155;
-    white-space: nowrap;
-    font-size: 12px;
-  }
+  td { padding: 13px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
 
-  .nowrap-cell { white-space: nowrap; }
   .bold { font-weight: 600; color: #0f172a; }
-  .muted { color: #94a3b8; font-size: 11.5px; }
-  .mono { font-family: monospace; font-size: 11.5px; }
+  .muted { color: #94a3b8; }
+  .mono { font-family: monospace; font-size: 12px; }
   .center { text-align: center; }
   .pad-24 { padding: 24px; }
 
@@ -325,12 +302,8 @@
     font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
   }
   .punct-early { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
-  .punct-warning { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
   .punct-towards { background: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc; }
   .punct-late { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
-  .punct-early-txt { color: #15803d; }
-  .punct-warning-txt { color: #d97706; }
-  .punct-late-txt { color: #dc2626; }
 
   .notice { padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; }
   .notice.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }

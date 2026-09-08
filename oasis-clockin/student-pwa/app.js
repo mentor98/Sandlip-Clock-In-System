@@ -18,7 +18,6 @@ const state = {
   studentName: localStorage.getItem('oasis_student_name') || null,
   deviceMac: getOrCreateDeviceMac(),
   deviceStatus: 'AUTHORIZED',
-  activeSession: null,
   lastLocation: null,
   pendingQrLocationId: null,
   pendingQrToken: null,
@@ -27,120 +26,10 @@ const state = {
   originScreenBeforeScan: 'screen-signin',
 };
 
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-// ====== Deterministic Physical Hardware Fingerprinter ======
-// Generates identical hardware MAC and device ID across Chrome, Firefox, Edge, and Safari on the same physical machine
-function getHardwareDeviceIdentity() {
-  const parts = [];
-
-  // 1. Screen resolution & color depth (consistent across all browsers on this machine)
-  const maxDim = Math.max(window.screen?.width || 0, window.screen?.height || 0);
-  const minDim = Math.min(window.screen?.width || 0, window.screen?.height || 0);
-  parts.push(`scr:${maxDim}x${minDim}x${window.screen?.colorDepth || 24}`);
-
-  // 2. Hardware concurrency (logical CPU cores)
-  parts.push(`cpu:${navigator.hardwareConcurrency || 4}`);
-
-  // 3. System Timezone
-  try {
-    parts.push(`tz:${Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'}`);
-  } catch (_) {
-    parts.push(`tz:${new Date().getTimezoneOffset()}`);
-  }
-
-  // 4. Platform Family
-  const navPlat = (navigator.platform || '').toLowerCase();
-  let platFamily = 'unknown';
-  if (navPlat.includes('win')) platFamily = 'win';
-  else if (navPlat.includes('mac') || navPlat.includes('iphone') || navPlat.includes('ipad')) platFamily = 'mac';
-  else if (navPlat.includes('linux') || navPlat.includes('android')) platFamily = 'linux';
-  parts.push(`os:${platFamily}`);
-
-  // 5. WebGL hardware vendor & unmasked renderer (GPU is identical across browsers)
-  try {
-    const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-    if (gl) {
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      if (ext) {
-        const renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '';
-        const vendor = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) || '';
-        parts.push(`gpu:${vendor}::${renderer}`);
-      }
-      parts.push(`gl:${gl.getParameter(gl.MAX_TEXTURE_SIZE)}:${gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)}`);
-    }
-  } catch (_) {}
-
-  // 6. AudioContext hardware DAC sample rate
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (AudioCtx) {
-      const ctx = new AudioCtx();
-      parts.push(`audio:${ctx.sampleRate}`);
-      ctx.close();
-    }
-  } catch (_) {}
-
-  const rawString = parts.join('|');
-
-  // Compute 64-bit deterministic hash (using two 32-bit FNV-1a hashes)
-  function fnv1a(str, seed = 0x811c9dc5) {
-    let h = seed;
-    for (let i = 0; i < str.length; i++) {
-      h ^= str.charCodeAt(i);
-      h = Math.imul(h, 0x01000193);
-    }
-    return (h >>> 0);
-  }
-
-  const h1 = fnv1a(rawString, 0x811c9dc5);
-  const h2 = fnv1a(rawString, 0x9e3779b9);
-  const h3 = fnv1a(rawString + '_ext3', 0x5bd1e995);
-  const h4 = fnv1a(rawString + '_ext4', 0x27d4eb2f);
-
-  const hex1 = h1.toString(16).padStart(8, '0');
-  const hex2 = h2.toString(16).padStart(8, '0');
-  const hexCombined = (hex1 + hex2).toUpperCase();
-
-  // Deterministic hardware MAC address: XX:XX:XX:XX:XX:XX
-  // Ensure locally administered unicast bit (2nd hex digit is 2, 6, A, or E)
-  const b0 = hexCombined.slice(0, 1) + '2';
-  const b1 = hexCombined.slice(2, 4);
-  const b2 = hexCombined.slice(4, 6);
-  const b3 = hexCombined.slice(6, 8);
-  const b4 = hexCombined.slice(8, 10);
-  const b5 = hexCombined.slice(10, 12);
-  const hardwareMac = `${b0}:${b1}:${b2}:${b3}:${b4}:${b5}`;
-
-  // Deterministic hardware UUID (8-4-4-4-12)
-  const p1 = hex1;
-  const p2 = hex2.slice(0, 4);
-  const p3 = '4' + hex2.slice(5, 8);
-  const p4 = 'a' + h3.toString(16).padStart(8, '0').slice(1, 4);
-  const p5 = (h3.toString(16).padStart(8, '0') + h4.toString(16).padStart(8, '0')).slice(0, 12);
-  const hardwareDeviceId = `${p1}-${p2}-${p3}-${p4}-${p5}`;
-
-  return {
-    hardwareMac,
-    hardwareDeviceId,
-    hardwareProfile: rawString,
-  };
-}
-
 function getOrCreateDeviceMac() {
   let mac = localStorage.getItem('oasis_device_mac');
-  const isDefaultOrInvalid = !mac || !/^[0-9A-Fa-f:]{17}$/.test(mac);
-  if (isDefaultOrInvalid) {
-    const hw = getHardwareDeviceIdentity();
-    mac = hw.hardwareMac;
+  if (!mac || !/^[0-9A-Fa-f:]{17}$/.test(mac)) {
+    mac = 'be:64:b4:14:4d:67';
     localStorage.setItem('oasis_device_mac', mac);
   }
   return mac;
@@ -185,29 +74,21 @@ function setError(elId, msg, isSuccess = false) {
 
 function clearError(elId) { setError(elId, ''); }
 
-function showSigninAlert(msg, attemptedId = '', showRegisterBtn = false) {
+function showSigninAlert(msg, attemptedId = '') {
   const box = document.getElementById('signin-alert-box');
   const text = document.getElementById('signin-error-text');
-  const regBtn = document.getElementById('btn-prompt-register');
   if (box && text) {
     text.textContent = msg;
     box.style.display = 'flex';
     box.dataset.attemptedId = attemptedId;
-    if (regBtn) {
-      regBtn.style.display = showRegisterBtn ? 'inline-flex' : 'none';
-    }
   }
 }
 
 function hideSigninAlert() {
   const box = document.getElementById('signin-alert-box');
-  const regBtn = document.getElementById('btn-prompt-register');
   if (box) {
     box.style.display = 'none';
     box.dataset.attemptedId = '';
-  }
-  if (regBtn) {
-    regBtn.style.display = 'none';
   }
 }
 
@@ -227,27 +108,9 @@ function clearSession() {
     clockInterval = null;
   }
   stopScanner();
-
-  // Clear session-specific state while preserving physical device hardware identity & binding
-  const savedMac = localStorage.getItem('oasis_device_mac');
-  const savedDevId = localStorage.getItem('oasis_device_id');
-  const boundSid = localStorage.getItem('oasis_bound_device_student_id');
-  const boundName = localStorage.getItem('oasis_bound_device_student_name');
-
-  localStorage.removeItem('oasis_session');
-  localStorage.removeItem('oasis_today_clocked_in');
-  localStorage.removeItem('oasis_today_clockin_time');
-  localStorage.removeItem('oasis_today_clocked_out');
-  localStorage.removeItem('oasis_today_clockout_time');
-  localStorage.removeItem('oasis_student_id');
-  localStorage.removeItem('oasis_student_name');
-
-  if (savedMac) localStorage.setItem('oasis_device_mac', savedMac);
-  if (savedDevId) localStorage.setItem('oasis_device_id', savedDevId);
-  if (boundSid) localStorage.setItem('oasis_bound_device_student_id', boundSid);
-  if (boundName) localStorage.setItem('oasis_bound_device_student_name', boundName);
-
+  localStorage.clear();
   state.sessionToken = null;
+  state.deviceId = null;
   state.studentId = null;
   state.studentName = null;
   state.lastLocation = null;
@@ -315,17 +178,6 @@ window.addEventListener('online', () => {
 });
 
 function performLocalVerifiedAttendance(payload) {
-  if (!state.activeSession) {
-    const err = new Error('Please wait for an admin to open a session before clocking in.');
-    err.status = 403;
-    err.data = {
-      noSessionCreated: true,
-      error: 'Please wait for an admin to open a session before clocking in.',
-      criticalFailures: ['Please wait for an admin to open a session before clocking in.'],
-    };
-    throw err;
-  }
-
   const rawId = String(payload.student_id || state.studentId || 'SAN-2026-014').trim();
 
   // 1. Resolve student record
@@ -346,10 +198,11 @@ function performLocalVerifiedAttendance(payload) {
         email: `${rawId.toLowerCase().replace(/[^a-z0-9]/g, '')}@oasis.edu`,
       };
     } else {
-      const err = new Error("You don't have an account. Please register to get an ID");
-      err.status = 404;
-      err.data = { notFound: true, error: "You don't have an account. Please register to get an ID" };
-      throw err;
+      student = {
+        student_id: rawId,
+        full_name: localStorage.getItem('oasis_student_name') || `Student (${rawId})`,
+        email: `${rawId.toLowerCase().replace(/[^a-z0-9]/g, '')}@oasis.edu`,
+      };
     }
   }
 
@@ -362,36 +215,21 @@ function performLocalVerifiedAttendance(payload) {
     scannedKeys = JSON.parse(localStorage.getItem('oasis_scanned_keys') || '[]');
   } catch (_) {}
 
-  if (scannedKeys.includes(duplicateKey) || state.clockedIn) {
-    const err = new Error('You have already clockin.');
+  if (scannedKeys.includes(duplicateKey)) {
+    const err = new Error('You have already recorded attendance for this session. Each student can only scan once.');
     err.status = 409;
-    err.data = { alreadyScanned: true, error: 'You have already clockin.' };
+    err.data = { alreadyScanned: true, error: 'You have already recorded attendance for this session.' };
     throw err;
   }
 
   // 3. Determine punctuality based on local device time
-  // Early:   7:00am - 8:30am (up to 8:39am) -> 'EARLY'
-  // Warning: 8:40am - 9:15am -> 'WARNING'
-  // Late:    9:16am - 5:00pm -> 'LATE'
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  let punctuality = 'EARLY';
-  let punctualityLabel = 'Early';
-  let isLate = false;
-
-  if (currentMinutes < 8 * 60 + 40) {
-    punctuality = 'EARLY';
-    punctualityLabel = 'Early';
-    isLate = false;
-  } else if (currentMinutes <= 9 * 60 + 15) {
-    punctuality = 'WARNING';
-    punctualityLabel = 'Warning';
-    isLate = false;
-  } else {
-    punctuality = 'LATE';
-    punctualityLabel = 'Late';
-    isLate = true;
-  }
+  const sessionStartMinutes = 8 * 60 + 30; // 08:30 AM standard session start
+  const lateGraceMinutes = 15;
+  const isLate = currentMinutes > (sessionStartMinutes + lateGraceMinutes);
+  const punctuality = isLate ? 'LATE' : (currentMinutes <= sessionStartMinutes ? 'EARLY' : 'ON_TIME');
+  const punctualityLabel = isLate ? 'Late Arrival' : (currentMinutes <= sessionStartMinutes ? 'Early' : 'On Time');
 
   // 4. Save to local attendance history
   const record = {
@@ -467,7 +305,7 @@ function performLocalVerifiedAttendance(payload) {
 }
 
 // ====== API ======
-async function api(path, { method = 'GET', body, auth = true, timeoutMs = 8000, isRetry = false } = {}) {
+async function api(path, { method = 'GET', body, auth = true, timeoutMs = 4000, isRetry = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && state.sessionToken) headers.Authorization = `Bearer ${state.sessionToken}`;
   if (state.studentId) headers['x-student-id'] = state.studentId;
@@ -528,23 +366,11 @@ async function api(path, { method = 'GET', body, auth = true, timeoutMs = 8000, 
 let cachedPosition = null;
 let cachedPositionTime = 0;
 
-function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371000; // Earth radius in meters
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
 function getPosition() {
   return new Promise((resolve) => {
     const defaultCoords = {
-      latitude: 8.92811,
-      longitude: 11.33090,
+      latitude: 8.9280843,
+      longitude: 11.3307533,
       accuracy: 15,
       isBeacon: true,
     };
@@ -619,21 +445,30 @@ document.getElementById('btn-goto-register').onclick = async () => {
   hideSigninAlert();
   showScreen('screen-register');
   clearError('register-error');
-  await fetchNextStudentId();
-  const nameEl = document.getElementById('reg-name');
-  if (nameEl) nameEl.focus();
+  const studentInput = document.getElementById('student-id');
+  const currentVal = studentInput ? studentInput.value.trim() : '';
+  if (currentVal) {
+    document.getElementById('reg-sid').value = currentVal;
+  } else {
+    await fetchNextStudentId();
+  }
 };
 
 // Alert prompt button: "Register & Get Student ID"
 const promptBtn = document.getElementById('btn-prompt-register');
 if (promptBtn) {
   promptBtn.onclick = async () => {
+    const box = document.getElementById('signin-alert-box');
+    const attemptedId = (box && box.dataset.attemptedId) || '';
     hideSigninAlert();
     showScreen('screen-register');
     clearError('register-error');
-    await fetchNextStudentId();
-    const nameEl = document.getElementById('reg-name');
-    if (nameEl) nameEl.focus();
+    if (attemptedId) {
+      document.getElementById('reg-sid').value = attemptedId;
+    } else {
+      await fetchNextStudentId();
+    }
+    document.getElementById('reg-name').focus();
   };
 }
 
@@ -642,45 +477,19 @@ document.getElementById('btn-back-signin').onclick = () => {
   hideSigninAlert();
 };
 
-// Refresh next Student ID button
-const btnRefreshSid = document.getElementById('btn-refresh-sid');
-if (btnRefreshSid) {
-  btnRefreshSid.onclick = async () => {
-    btnRefreshSid.classList.add('rotating');
-    await fetchNextStudentId();
-    setTimeout(() => btnRefreshSid.classList.remove('rotating'), 500);
-  };
-}
-
-// Auto suggest ID button (if present elsewhere)
-const btnSuggestId = document.getElementById('btn-suggest-id');
-if (btnSuggestId) {
-  btnSuggestId.onclick = async () => {
-    await fetchNextStudentId();
-  };
-}
+// Auto suggest ID button
+document.getElementById('btn-suggest-id').onclick = async () => {
+  await fetchNextStudentId();
+};
 
 async function fetchNextStudentId() {
-  const sidEl = document.getElementById('reg-sid');
-  const hintTextEl = document.getElementById('reg-sid-hint-text');
-  if (sidEl && !sidEl.value) {
-    sidEl.placeholder = 'Generating next ID...';
-  }
   try {
     const res = await api('/auth/next-id', { auth: false });
     if (res && res.nextId) {
-      if (sidEl) sidEl.value = res.nextId;
-      if (hintTextEl) {
-        if (res.lastStudentId) {
-          hintTextEl.textContent = `Auto-generated from last admin student: ${res.lastStudentId}${res.lastStudentName ? ` (${res.lastStudentName})` : ''}`;
-        } else {
-          hintTextEl.textContent = `Auto-generated initial student ID: ${res.nextId}`;
-        }
-      }
+      document.getElementById('reg-sid').value = res.nextId;
     }
   } catch (e) {
     console.warn('Could not fetch next id:', e);
-    if (hintTextEl) hintTextEl.textContent = 'Auto-assigned ID active';
   }
 }
 
@@ -715,21 +524,9 @@ document.getElementById('btn-register').onclick = async () => {
   const errEl = 'register-error';
   clearError(errEl);
   const full_name = document.getElementById('reg-name').value.trim();
-  let student_id = document.getElementById('reg-sid').value.trim();
+  const student_id = document.getElementById('reg-sid').value.trim();
   const email = document.getElementById('reg-email').value.trim();
-  if (!student_id) {
-    await fetchNextStudentId();
-    student_id = document.getElementById('reg-sid').value.trim();
-  }
-  if (!full_name || !email || !student_id) { setError(errEl, 'Please enter your full name and institutional email.'); return; }
-
-  // 1-Device-per-student check: Ensure this device hasn't already registered a different student
-  const boundSid = localStorage.getItem('oasis_bound_device_student_id');
-  const boundName = localStorage.getItem('oasis_bound_device_student_name');
-  if (boundSid && boundSid.toLowerCase() !== student_id.toLowerCase()) {
-    setError(errEl, `Device Restriction: This device is already bound to student account "${boundName || boundSid}" (${boundSid}). Each physical device can only be used by one student. Another user cannot create an account on this same device.`);
-    return;
-  }
+  if (!full_name || !student_id || !email) { setError(errEl, 'Please fill in all fields.'); return; }
 
   const btn = document.getElementById('btn-register');
   btn.disabled = true;
@@ -743,14 +540,11 @@ document.getElementById('btn-register').onclick = async () => {
       auth: false,
     });
 
-    const assignedId = regRes.student?.student_id || student_id;
     const activeToken = regRes.sessionToken || regRes.registrationToken;
     saveSession({ sessionToken: activeToken, deviceId: regRes.deviceId || 'default-device-id' });
-    localStorage.setItem('oasis_student_id', assignedId);
+    localStorage.setItem('oasis_student_id', student_id);
     localStorage.setItem('oasis_student_name', full_name);
-    localStorage.setItem('oasis_bound_device_student_id', assignedId);
-    localStorage.setItem('oasis_bound_device_student_name', full_name);
-    state.studentId = assignedId;
+    state.studentId = student_id;
     state.studentName = full_name;
 
     // 2. Direct transition to Home Screen — instant response without waiting or page refresh
@@ -772,7 +566,7 @@ document.getElementById('btn-signin').onclick = async () => {
   hideSigninAlert();
   const student_id = document.getElementById('student-id').value.trim();
   if (!student_id) {
-    showSigninAlert('Please enter your Student / Matric ID.', '', false);
+    showSigninAlert('Please enter your Student / Matric ID.');
     return;
   }
   await doDirectClockIn(student_id);
@@ -792,28 +586,6 @@ async function doDirectClockIn(student_id) {
   if (btnText) btnText.textContent = 'Clocking In…';
 
   try {
-    // 1-Device-per-student binding check across browsers on same device
-    const boundSid = localStorage.getItem('oasis_bound_device_student_id') || state.boundStudent?.student_id;
-    const boundName = localStorage.getItem('oasis_bound_device_student_name') || state.boundStudent?.full_name;
-    if (boundSid && boundSid.toLowerCase() !== student_id.toLowerCase()) {
-      showSigninAlert(`Device Restriction: This physical device is bound to student account "${boundName || boundSid}" (${boundSid}). Each physical device can only be used by one student.`, '', false);
-      return;
-    }
-
-    if (state.clockedIn) {
-      showSigninAlert('You have already clockin.', student_id, false);
-      return;
-    }
-
-    // Check if an active session has been created by an administrator
-    if (!state.activeSession) {
-      const refreshedSession = await loadSession();
-      if (!refreshedSession) {
-        showSigninAlert('Please wait for an admin to open a session before clocking in.', '', false);
-        return;
-      }
-    }
-
     // Obtain live GPS proximity
     state.lastLocation = await getPosition();
 
@@ -841,9 +613,6 @@ async function doDirectClockIn(student_id) {
       }
       if (apiErr.status === 409 || (apiErr.data && apiErr.data.alreadyScanned)) {
         throw apiErr; // Legitimate duplicate scan
-      }
-      if (apiErr.status === 403 || (apiErr.data && apiErr.data.noSessionCreated) || (apiErr.message && apiErr.message.toLowerCase().includes('no session created'))) {
-        throw apiErr; // Legitimate session restriction
       }
       console.warn('Backend connection unavailable, switching to local verified clock-in:', apiErr.message);
       res = performLocalVerifiedAttendance(payload);
@@ -898,20 +667,12 @@ async function doDirectClockIn(student_id) {
   } catch (err) {
     console.error('Clockin error:', err);
     const data = err.data || {};
-    const errMsg = (err.message || '').trim();
 
-    if (err.status === 404 || data.notFound || errMsg.toLowerCase().includes('register to get an id') || errMsg.toLowerCase().includes("don't have an account")) {
-      showSigninAlert("You don't have an account. Please register to get an ID", student_id, true);
-    } else if (err.status === 409 || data.alreadyScanned || errMsg.toLowerCase().includes('already')) {
-      state.clockedIn = true;
-      localStorage.setItem('oasis_today_clocked_in', 'true');
-      showSigninAlert('You have already clockin.', student_id, false);
-    } else if (err.status === 403 && (data.noSessionCreated || errMsg.toLowerCase().includes('session') || errMsg.toLowerCase().includes('open a session'))) {
-      state.activeSession = null;
-      updateSessionUI(null);
-      showSigninAlert('Please wait for an admin to open a session before clocking in.', '', false);
+    if (err.status === 404 || data.notFound) {
+      // First time student! Show registration callout
+      showSigninAlert(`Student ID "${student_id}" is not registered. Coming for the first time? Please register to get your ID and clock in.`, student_id);
     } else {
-      showSigninAlert(err.message || 'Clock-in failed. Please verify your Student ID.', '', false);
+      showSigninAlert(err.message || 'Clock-in failed. Please verify your Student ID.');
     }
   } finally {
     btn.disabled = false;
@@ -923,43 +684,16 @@ async function doDirectClockIn(student_id) {
 async function initHome() {
   clearError('home-error');
 
-  const greetingEl = document.getElementById('home-greeting');
-  const homeStudentIdEl = document.getElementById('home-student-id');
-  const initialName = state.studentName || localStorage.getItem('oasis_student_name');
-  const initialId = state.studentId || localStorage.getItem('oasis_student_id');
-
-  if (greetingEl && initialName) {
-    greetingEl.textContent = `Hi, ${initialName}`;
-  }
-  if (homeStudentIdEl && initialId) {
-    homeStudentIdEl.textContent = initialId;
-  }
-
   try {
     const { student } = await api('/auth/me');
-    if (greetingEl) {
-      greetingEl.textContent = `Hi, ${student.full_name}`;
-    }
-    if (homeStudentIdEl) {
-      homeStudentIdEl.textContent = student.student_id;
-    }
-    const headerTag = document.getElementById('header-student-tag');
-    if (headerTag) {
-      headerTag.textContent = student.student_id;
-    }
+    document.getElementById('home-greeting').textContent = `Hi, ${student.full_name}`;
+    document.getElementById('header-student-tag').textContent = student.student_id;
     state.studentName = student.full_name;
     state.studentId = student.student_id;
     localStorage.setItem('oasis_student_id', student.student_id);
     localStorage.setItem('oasis_student_name', student.full_name);
   } catch {
-    const fallbackName = state.studentName || localStorage.getItem('oasis_student_name');
-    const fallbackId = state.studentId || localStorage.getItem('oasis_student_id');
-    if (greetingEl) {
-      greetingEl.textContent = `Hi, ${fallbackName || fallbackId || 'there'}`;
-    }
-    if (homeStudentIdEl) {
-      homeStudentIdEl.textContent = fallbackId || '';
-    }
+    document.getElementById('home-greeting').textContent = `Hi, ${state.studentName || state.studentId || 'there'}`;
   }
 
   // Update device badge
@@ -974,39 +708,8 @@ async function initHome() {
   checkUrlQr();
 
   // Load status & history asynchronously
-  updateTelemetryCard();
   refreshHomeLocation().catch(() => {});
   await Promise.all([loadTodayStatus(), loadSession(), loadHistory()]);
-}
-
-function updateTelemetryCard(loc) {
-  const deviceIdEl = document.getElementById('tel-device-id');
-  const deviceNameEl = document.getElementById('tel-device-name');
-  const networkIpEl = document.getElementById('tel-network-ip');
-  const macEl = document.getElementById('tel-mac');
-  const coordsEl = document.getElementById('tel-coords');
-  const distEl = document.getElementById('tel-distance');
-
-  const dId = state.deviceId || localStorage.getItem('oasis_device_id') || 'dev-browser-auth';
-  if (deviceIdEl) deviceIdEl.textContent = dId.length > 14 ? `${dId.slice(0, 12)}…` : dId;
-  if (deviceNameEl) deviceNameEl.textContent = state.deviceName || localStorage.getItem('oasis_device_name') || navigator.platform || 'Registered Browser';
-  if (networkIpEl) networkIpEl.textContent = state.clientIp || '192.168.1.156';
-  if (macEl) macEl.textContent = state.deviceMac || localStorage.getItem('oasis_device_mac') || 'BE:64:B4:14:4D:67';
-
-  const lat = (loc && loc.latitude != null) ? loc.latitude : (state.lastLocation?.latitude || 8.92811);
-  const lng = (loc && loc.longitude != null) ? loc.longitude : (state.lastLocation?.longitude || 11.33090);
-  if (coordsEl) coordsEl.textContent = `${lat.toFixed(5)}° N, ${lng.toFixed(5)}° E`;
-
-  if (distEl) {
-    const dMeters = Math.round(calculateHaversineDistance(lat, lng, 8.92811, 11.33090));
-    if (dMeters <= 150) {
-      distEl.textContent = `${dMeters} m (Inside Perimeter)`;
-      distEl.className = 'telemetry-val text-success';
-    } else {
-      distEl.textContent = `${dMeters} m (Outside Perimeter)`;
-      distEl.className = 'telemetry-val text-danger';
-    }
-  }
 }
 
 function updateDeviceBadge() {
@@ -1040,7 +743,6 @@ async function refreshHomeLocation() {
   if (!el) return;
   try {
     state.lastLocation = await getPosition();
-    updateTelemetryCard(state.lastLocation);
     if (state.lastLocation.isBeacon) {
       el.textContent = 'Campus Geofence Active (Beacon Proximity)';
     } else {
@@ -1048,23 +750,10 @@ async function refreshHomeLocation() {
     }
   } catch (err) {
     el.textContent = 'Campus Geofence Active';
-    updateTelemetryCard();
   }
 }
 
 async function loadTodayStatus() {
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const storedDay = localStorage.getItem('oasis_today_date');
-  if (storedDay && storedDay !== todayStr) {
-    localStorage.removeItem('oasis_today_clocked_in');
-    localStorage.removeItem('oasis_today_clocked_out');
-    localStorage.removeItem('oasis_today_clockin_time');
-    localStorage.removeItem('oasis_today_clockout_time');
-    state.clockedIn = false;
-    state.clockedOut = false;
-  }
-  localStorage.setItem('oasis_today_date', todayStr);
-
   const localClockedIn = localStorage.getItem('oasis_today_clocked_in') === 'true';
   const localClockedOut = localStorage.getItem('oasis_today_clocked_out') === 'true';
   if (localClockedIn) state.clockedIn = true;
@@ -1143,192 +832,75 @@ function applyClockButtonState() {
       }
     }
   } else {
+    btn.disabled = false;
+    btn.className = 'btn-primary';
+    text.textContent = 'Clock In';
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
     if (icon) {
       icon.innerHTML = `<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>`;
     }
   }
 }
 
-function updateSessionUI(session) {
-  state.activeSession = session || null;
-
-  // 1. Update front banner (signin screen)
-  const frontBanner = document.getElementById('front-session-banner');
-  const frontTitle = document.getElementById('front-session-title');
-  const frontDesc = document.getElementById('front-session-desc');
-  const frontBtn = document.getElementById('btn-signin');
-  const frontBtnText = document.getElementById('btn-signin-text');
-
-  if (frontBanner && frontTitle && frontDesc) {
-    if (session) {
-      frontBanner.className = 'front-session-card session-active';
-      frontTitle.innerHTML = `<span class="session-dot"></span> Session Active: ${escapeHtml(session.title)}`;
-      frontDesc.textContent = `Location: ${session.locations?.name || 'Sandlip Oasis Campus'}. Clock-in is open.`;
-      frontBanner.style.display = 'flex';
-      frontBanner.dataset.studentAttempted = '';
-      if (frontBtnText && (!frontBtn || !frontBtn.disabled)) {
-        frontBtnText.textContent = 'Clock In';
-      }
-    } else {
-      frontBanner.className = 'front-session-card session-none';
-      frontTitle.innerHTML = `<span class="session-dot-amber"></span> No Session Running`;
-      frontDesc.textContent = 'Please wait for an administrator to open an attendance session before clocking in.';
-      frontBanner.style.display = 'flex';
-      if (frontBtnText && (!frontBtn || !frontBtn.disabled)) {
-        frontBtnText.textContent = 'Clock In';
-      }
-    }
-  }
-
-  // 2. Update home banner (home screen)
-  const homeBanner = document.getElementById('session-banner');
-  if (homeBanner) {
-    if (session) {
-      homeBanner.innerHTML = `<span class="session-dot"></span> <div><strong>${escapeHtml(session.title)}</strong> is active at <em>${escapeHtml(session.locations?.name || 'Campus')}</em></div>`;
-      homeBanner.className = 'session-banner';
-      homeBanner.style.display = 'flex';
-    } else {
-      homeBanner.innerHTML = `<span class="session-dot-amber"></span> <div>No session running · Waiting for administrator to start session</div>`;
-      homeBanner.className = 'session-banner session-none';
-      homeBanner.style.display = 'flex';
-    }
-  }
-
-  applyClockButtonState();
-}
-
-let sessionEventSource = null;
-
-function setupSessionRealtimeStream() {
-  if (typeof window === 'undefined' || !window.EventSource) return;
-
-  if (sessionEventSource) {
-    try { sessionEventSource.close(); } catch (_) {}
-    sessionEventSource = null;
-  }
-
-  try {
-    const base = getApiBase();
-    const streamUrl = base === '/api' ? '/api/sessions/active/stream' : `${base}/sessions/active/stream`;
-    sessionEventSource = new EventSource(streamUrl);
-
-    const handleSessionData = (raw) => {
-      try {
-        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        const session = (data && data.session && data.active !== false) ? data.session : null;
-        updateSessionUI(session);
-      } catch (e) {
-        console.warn('Realtime session parse notice:', e);
-      }
-    };
-
-    sessionEventSource.addEventListener('session', (event) => {
-      handleSessionData(event.data);
-    });
-
-    sessionEventSource.onmessage = (event) => {
-      if (event.data && (event.data.includes('"session"') || event.data.includes('"active"'))) {
-        handleSessionData(event.data);
-      }
-    };
-
-    sessionEventSource.addEventListener('attendance', (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        const curStudentId = state.studentId || state.student?.student_id;
-        const evStudentId = data.student_id || data.students?.student_id;
-        if (curStudentId && evStudentId && String(curStudentId).trim().toLowerCase() === String(evStudentId).trim().toLowerCase()) {
-          state.clockedIn = true;
-          applyClockButtonState();
-          if (typeof loadHistory === 'function') loadHistory();
-        }
-      } catch (_) {}
-    });
-
-    sessionEventSource.onerror = () => {
-      // Immediate REST fetch upon disconnect/error so state never stays stale
-      loadSession();
-    };
-  } catch (err) {
-    console.warn('Realtime session EventSource init notice:', err);
-  }
-}
-
 async function loadSession() {
   try {
-    const res = await api(`/sessions/active?_t=${Date.now()}`, { auth: false, timeoutMs: 4000 });
-    const session = (res && res.session && res.active !== false) ? res.session : null;
-    updateSessionUI(session);
-    return session;
-  } catch (e) {
-    console.warn('Session load notice:', e.message);
-    return state.activeSession || null;
-  }
+    const { session } = await api('/sessions/active');
+    const el = document.getElementById('session-banner');
+    if (!el) return;
+    if (session) {
+      el.innerHTML = `<span class="session-dot"></span> <div><strong>${session.title}</strong> is active at <em>${session.locations?.name || 'Campus'}</em></div>`;
+      el.className = 'session-banner';
+      el.style.display = 'flex';
+    } else {
+      el.innerHTML = '<span>No active attendance session right now.</span>';
+      el.className = 'session-banner session-inactive';
+      el.style.display = 'flex';
+    }
+  } catch { /* not fatal */ }
 }
 
 async function loadHistory() {
-  const list = document.getElementById('history-list');
-  if (!list) return;
-
-  let remoteRecords = [];
   try {
-    const res = await api('/attendance/me');
-    if (res && Array.isArray(res.attendance)) {
-      remoteRecords = res.attendance;
+    const { attendance } = await api('/attendance/me');
+    const list = document.getElementById('history-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!attendance || attendance.length === 0) {
+      list.innerHTML = '<li class="empty-history">No recent attendance records found.</li>';
+      return;
     }
-  } catch { /* fallback to local storage */ }
+    attendance.slice(0, 8).forEach(row => {
+      const li = document.createElement('li');
+      const isIn = row.type === 'clock_in';
+      const label = isIn ? 'Clock In' : 'Clock Out';
+      const statusClass = row.verification_status ? `hist-${row.verification_status.toLowerCase()}` : '';
+      
+      const iconSvg = isIn ? getSvg('clockIn', 16, '#065f46') : getSvg('clockOut', 16, '#475569');
 
-  let localHist = [];
-  try {
-    localHist = JSON.parse(localStorage.getItem('oasis_attendance_history') || '[]');
-  } catch (_) {}
+      const punctualityClass = row.punctuality ? `punct-${row.punctuality.toLowerCase()}` : '';
+      const punctualityBadge = isIn && row.punctuality ? `
+        <span class="punct-pill ${punctualityClass}">${row.punctuality}</span>
+      ` : '';
 
-  // Merge unique by id or recorded_at
-  const allMap = new Map();
-  remoteRecords.forEach(r => allMap.set(r.id || `${r.recorded_at}-${r.type}`, r));
-  localHist.forEach(r => {
-    const key = r.id || `${r.recorded_at}-${r.type}`;
-    if (!allMap.has(key)) allMap.set(key, r);
-  });
-
-  const merged = Array.from(allMap.values()).sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at));
-
-  list.innerHTML = '';
-  if (merged.length === 0) {
-    list.innerHTML = '<li class="empty-history">No recent attendance records found.</li>';
-    return;
-  }
-  merged.slice(0, 10).forEach(row => {
-    const li = document.createElement('li');
-    const isIn = row.type === 'clock_in';
-    const label = isIn ? 'Clock In' : 'Clock Out';
-    const statusClass = row.verification_status ? `hist-${row.verification_status.toLowerCase()}` : '';
-    
-    const iconSvg = isIn ? getSvg('clockIn', 16, '#065f46') : getSvg('clockOut', 16, '#475569');
-
-    const punct = (row.punctuality === 'LATE' || row.is_late) ? 'LATE' : (row.punctuality === 'WARNING' ? 'WARNING' : 'EARLY');
-    const punctualityClass = punct === 'LATE' ? 'punct-late' : (punct === 'WARNING' ? 'punct-warning' : 'punct-early');
-    const punctualityBadge = isIn ? `
-      <span class="punct-pill ${punctualityClass}">${punct}</span>
-    ` : '';
-
-    li.innerHTML = `
-      <div class="hist-left">
-        <div class="hist-icon-box ${isIn ? 'in' : 'out'}">
-          ${iconSvg}
+      li.innerHTML = `
+        <div class="hist-left">
+          <div class="hist-icon-box ${isIn ? 'in' : 'out'}">
+            ${iconSvg}
+          </div>
+          <div class="hist-main">
+            <strong>${label} ${punctualityBadge}</strong>
+            <span class="hist-location">${row.locations?.name || 'Main Campus'}</span>
+          </div>
         </div>
-        <div class="hist-main">
-          <strong>${label} ${punctualityBadge}</strong>
-          <span class="hist-location">${row.locations?.name || 'Main Campus'}</span>
+        <div class="hist-right">
+          <span class="hist-status ${statusClass}">${row.verification_status || 'RECORDED'}</span>
+          <span class="hist-time">${new Date(row.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${new Date(row.recorded_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
         </div>
-      </div>
-      <div class="hist-right">
-        <span class="hist-status ${statusClass}">${row.verification_status || 'RECORDED'}</span>
-        <span class="hist-time">${new Date(row.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${new Date(row.recorded_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
-      </div>
-    `;
-    list.appendChild(li);
-  });
+      `;
+      list.appendChild(li);
+    });
+  } catch { /* not fatal */ }
 }
 
 document.getElementById('btn-refresh-hist').onclick = () => loadHistory();
@@ -1375,7 +947,7 @@ document.getElementById('btn-clock').onclick = async () => {
     showVerificationCard({
       status: 'VERIFIED',
       score: 100,
-      message: 'You have already clockin.',
+      message: `Hi ${state.studentName || 'Emmanuel'}, your attendance has already been successfully recorded for today! Clock-out opens at 5:00 PM.`,
       checks: {
         authentication: true,
         authorizedDevice: true,
@@ -1388,29 +960,7 @@ document.getElementById('btn-clock').onclick = async () => {
         activeSession: true,
       },
     });
-    setError(errEl, 'You have already clockin.');
     return;
-  }
-
-  // Session enforcement: student cannot clock in if admin hasn't created a session
-  if (!state.clockedIn && !state.activeSession) {
-    const refreshed = await loadSession();
-    if (!refreshed) {
-      showVerificationCard({
-        status: 'REJECTED',
-        score: 0,
-        message: 'Please wait for an admin to open a session before clocking in.',
-        checks: {
-          authentication: true,
-          authorizedDevice: true,
-          deviceActive: true,
-          approvedNetwork: true,
-          activeSession: false,
-        },
-      });
-      setError(errEl, 'Please wait for an admin to open a session before clocking in.');
-      return;
-    }
   }
 
   const type = state.clockedIn ? 'clock-out' : 'clock-in';
@@ -1446,105 +996,32 @@ document.getElementById('btn-clock').onclick = async () => {
     state.pendingQrToken = null;
     updateQrBadges();
 
-    const isApproved = res.status === 'VERIFIED' || res.status === 'REVIEW' || res.success;
-    if (isApproved) {
-      if (type === 'clock-in') {
-        state.clockedIn = true;
-        state.clockedOut = false;
-        localStorage.setItem('oasis_today_clocked_in', 'true');
-        localStorage.setItem('oasis_today_clockin_time', new Date().toISOString());
-      } else {
-        state.clockedOut = true;
-        localStorage.setItem('oasis_today_clocked_out', 'true');
-        localStorage.setItem('oasis_today_clockout_time', new Date().toISOString());
-      }
-
-      // Add to local history cache
-      const newRec = {
-        id: res.attendance?.id || `hist-${Date.now()}`,
-        type: type === 'clock-in' ? 'clock_in' : 'clock_out',
-        recorded_at: new Date().toISOString(),
-        verification_status: res.status || 'VERIFIED',
-        punctuality: res.punctuality || 'ON_TIME',
-        locations: { name: res.location_name || 'Sandlip Oasis Campus' },
-        risk_score: res.riskScore || 100,
-      };
-      try {
-        const h = JSON.parse(localStorage.getItem('oasis_attendance_history') || '[]');
-        h.unshift(newRec);
-        localStorage.setItem('oasis_attendance_history', JSON.stringify(h.slice(0, 30)));
-      } catch (_) {}
-    }
-
     // Show verification card with punctuality
     const punctualityText = res.punctuality ? ` · Marked as ${res.punctualityLabel || res.punctuality}` : '';
     showVerificationCard({
-      status: res.status || (isApproved ? 'VERIFIED' : 'REJECTED'),
-      score: res.riskScore != null ? res.riskScore : (isApproved ? 100 : 0),
+      status: res.status,
+      score: res.riskScore,
       punctuality: res.punctuality,
       punctualityLabel: res.punctualityLabel,
       isLate: res.isLate,
-      message: isApproved
-        ? `Successfully clocked ${type === 'clock-in' ? 'in' : 'out'} at ${res.location_name || 'campus'}${punctualityText}. Proximity: ${res.distanceM != null ? res.distanceM + 'm' : 'verified'}.`
-        : (res.error || res.message || 'Attendance could not be verified.'),
+      message: `Successfully clocked ${type === 'clock-in' ? 'in' : 'out'} at ${res.location_name || 'campus'}${punctualityText}. Proximity: ${res.distanceM != null ? res.distanceM + 'm' : 'verified'}.`,
       checks: res.checks,
     });
 
     await Promise.all([loadTodayStatus(), loadHistory()]);
   } catch (err) {
     const data = err.data || {};
-    const errMsg = err.message || '';
-    if (data.noSessionCreated || errMsg.toLowerCase().includes('session') || errMsg.toLowerCase().includes('open a session')) {
-      state.activeSession = null;
-      updateSessionUI(null);
-      showVerificationCard({
-        status: 'REJECTED',
-        score: 0,
-        message: 'Please wait for an admin to open a session before clocking in.',
-        checks: {
-          authentication: true,
-          authorizedDevice: true,
-          deviceActive: true,
-          approvedNetwork: true,
-          activeSession: false,
-        },
-      });
-    } else if (data.status === 'DUPLICATE' || errMsg.toLowerCase().includes('already')) {
-      state.clockedIn = true;
-      localStorage.setItem('oasis_today_clocked_in', 'true');
-      showVerificationCard({
-        status: 'VERIFIED',
-        score: 100,
-        punctuality: data.punctuality,
-        punctualityLabel: data.punctualityLabel,
-        isLate: data.isLate,
-        message: 'You have already clockin.',
-        checks: {
-          authentication: true,
-          authorizedDevice: true,
-          deviceActive: true,
-          approvedNetwork: true,
-          ipSubnetMatch: true,
-          deviceMacMatch: true,
-          insideGeofence: true,
-          validQr: true,
-          activeSession: true,
-        },
-      });
-      setError(errEl, 'You have already clockin.');
-    } else {
-      showVerificationCard({
-        status: data.status || 'REJECTED',
-        score: data.riskScore || 0,
-        punctuality: data.punctuality,
-        punctualityLabel: data.punctualityLabel,
-        isLate: data.isLate,
-        message: err.message || 'Attendance could not be verified.',
-        checks: data.checks || {},
-      });
-    }
+    showVerificationCard({
+      status: data.status || 'REJECTED',
+      score: data.riskScore || 0,
+      punctuality: data.punctuality,
+      punctualityLabel: data.punctualityLabel,
+      isLate: data.isLate,
+      message: err.message || 'Attendance could not be verified.',
+      checks: data.checks || {},
+    });
   } finally {
-    applyClockButtonState();
+    btn.disabled = false;
     await loadTodayStatus();
   }
 };
@@ -1809,8 +1286,8 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
 
   const badgeEl = document.getElementById('modal-success-badge');
   if (badgeEl) {
-    const punct = (res.punctuality === 'LATE' || res.isLate) ? 'LATE' : (res.punctuality === 'WARNING' ? 'WARNING' : 'EARLY');
-    badgeEl.textContent = `ATTENDANCE CONFIRMED · ${punct}`;
+    const punct = res.punctualityLabel || res.punctuality || 'PRESENT';
+    badgeEl.textContent = `ATTENDANCE CONFIRMED · ${punct.toUpperCase()}`;
   }
 
   const studentEl = document.getElementById('modal-success-student');
@@ -1825,10 +1302,9 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
 
   const punctEl = document.getElementById('modal-success-punctuality');
   if (punctEl) {
-    const isLate = Boolean(res.isLate || res.punctuality === 'LATE');
-    const isWarning = Boolean(!isLate && res.punctuality === 'WARNING');
-    const punctClass = isLate ? 'punct-late' : (isWarning ? 'punct-warning' : 'punct-early');
-    const punctText = isLate ? 'Late' : (isWarning ? 'Warning' : 'Early');
+    const isLate = Boolean(res.isLate);
+    const punctClass = isLate ? 'punct-late' : 'punct-on_time';
+    const punctText = res.punctualityLabel || (isLate ? 'Late Arrival' : 'On Time');
     punctEl.innerHTML = `<span class="punct-pill ${punctClass}">${punctText}</span>`;
   }
 
@@ -1902,10 +1378,10 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
       showVerificationCard({
         status: res.status || 'VERIFIED',
         score: res.riskScore != null ? res.riskScore : 100,
-        punctuality: (res.punctuality === 'LATE' || res.isLate) ? 'LATE' : (res.punctuality === 'WARNING' ? 'WARNING' : 'EARLY'),
-        punctualityLabel: (res.punctuality === 'LATE' || res.isLate) ? 'Late' : (res.punctuality === 'WARNING' ? 'Warning' : 'Early'),
+        punctuality: res.punctuality,
+        punctualityLabel: res.punctualityLabel,
         isLate: res.isLate,
-        message: `Attendance confirmed! Dynamic QR, hardware MAC, and classroom geofence verified. Recorded as ${(res.isLate || res.punctuality === 'LATE') ? 'Late' : (res.punctuality === 'WARNING' ? 'Warning' : 'Early')}.`,
+        message: `Attendance confirmed! Dynamic QR, hardware MAC, and classroom geofence verified. Recorded as ${res.punctualityLabel || res.punctuality || 'PRESENT'}.`,
         checks: res.checks,
       });
     };
@@ -2005,43 +1481,9 @@ async function handleQrScanned(data) {
                             state.studentId ||
                             'SAN-2026-014';
 
-  const currentHour = new Date().getHours();
-  const alreadyClockedIn = state.clockedIn || localStorage.getItem('oasis_today_clocked_in') === 'true';
-  const alreadyClockedOut = state.clockedOut || localStorage.getItem('oasis_today_clocked_out') === 'true';
-
-  if (alreadyClockedOut) {
-    playScanChirp(false);
-    if (titleEl) titleEl.textContent = 'Already Clocked Out';
-    if (bannerEl) {
-      bannerEl.className = 'hud-banner failed';
-      bannerEl.textContent = 'You have already completed attendance and clocked out for today.';
-    }
-    setTimeout(() => {
-      isScanningValidationActive = false;
-      startScanner();
-    }, 3500);
-    return;
-  }
-
-  if (alreadyClockedIn && currentHour < 17) {
-    playScanChirp(false);
-    if (titleEl) titleEl.textContent = 'Already Clocked In';
-    if (bannerEl) {
-      bannerEl.className = 'hud-banner success';
-      bannerEl.textContent = 'You are already clocked in! Per campus policy, clock-out opens at 5:00 PM.';
-    }
-    setTimeout(() => {
-      isScanningValidationActive = false;
-      startScanner();
-    }, 3500);
-    return;
-  }
-
-  const attendance_type = (alreadyClockedIn && currentHour >= 17) ? 'clock_out' : 'clock_in';
-
   // Client-side single-use enforcement: check if student has already scanned this token or session
   const targetSessionId = sessId || state.pendingQrSessionId || 'default-session';
-  const scanKey = `${resolvedStudentId}:${attendance_type}:${targetSessionId}:${token.slice(0, 32)}`;
+  const scanKey = `${resolvedStudentId}:${targetSessionId}:${token.slice(0, 32)}`;
   let scannedKeys = [];
   try {
     scannedKeys = JSON.parse(localStorage.getItem('oasis_scanned_keys') || '[]');
@@ -2093,7 +1535,7 @@ async function handleQrScanned(data) {
       location_id: locId,
       location_token: token,
       session_id: sessId || state.pendingQrSessionId || undefined,
-      attendance_type,
+      attendance_type: 'clock_in',
     };
 
     let res;
@@ -2102,9 +1544,6 @@ async function handleQrScanned(data) {
     } catch (fetchErr) {
       if (fetchErr.status === 409 || (fetchErr.data && fetchErr.data.alreadyScanned)) {
         throw fetchErr; // Legitimate single-scan duplicate error
-      }
-      if (fetchErr.status === 403 || (fetchErr.data && fetchErr.data.noSessionCreated) || (fetchErr.message && fetchErr.message.toLowerCase().includes('no session created'))) {
-        throw fetchErr; // Legitimate no session created restriction
       }
       console.warn('Backend unavailable during QR scan, validating locally and queuing attendance:', fetchErr.message);
       res = performLocalVerifiedAttendance(payload);
@@ -2122,7 +1561,7 @@ async function handleQrScanned(data) {
       // Step 2: Network & IP Passed
       if (badgeNet) { badgeNet.className = 'hud-badge ok'; badgeNet.textContent = 'VERIFIED'; }
       if (iconNet) iconNet.className = 'hud-step-icon ok';
-      if (descNet) descNet.textContent = `IP ${res.checks?.clientIp || res.details?.clientIp || '192.168.1.156'} matched campus network`;
+      if (descNet) descNet.textContent = `IP ${res.checks?.clientIp || res.details?.clientIp || '192.168.1.156'} matched classroom subnet`;
 
       // Step 3: Hardware MAC Passed
       if (badgeMac) { badgeMac.className = 'hud-badge ok'; badgeMac.textContent = 'MATCHED'; }
@@ -2132,14 +1571,12 @@ async function handleQrScanned(data) {
       // Step 4: Geofence Passed
       if (badgeGeo) { badgeGeo.className = 'hud-badge ok'; badgeGeo.textContent = 'INSIDE'; }
       if (iconGeo) iconGeo.className = 'hud-step-icon ok';
-      if (descGeo) descGeo.textContent = `Proximity: ${res.distanceM != null ? Math.round(res.distanceM) + 'm' : '12m'} inside campus perimeter`;
+      if (descGeo) descGeo.textContent = `Proximity: ${res.distanceM != null ? Math.round(res.distanceM) + 'm' : '12m'} inside classroom perimeter`;
 
-      if (titleEl) titleEl.textContent = attendance_type === 'clock_out' ? 'Clock-Out Verified!' : 'Attendance Verified! Present';
+      if (titleEl) titleEl.textContent = 'Attendance Verified! Present';
       if (bannerEl) {
         bannerEl.className = 'hud-banner success';
-        bannerEl.textContent = attendance_type === 'clock_out'
-          ? `Clock-out recorded! ${res.student?.full_name || resolvedStudentId} clocked out for today.`
-          : `All 4 security layers verified! ${res.student?.full_name || resolvedStudentId} marked as ${(res.isLate || res.punctuality === 'LATE') ? 'Late' : (res.punctuality === 'WARNING' ? 'Warning' : 'Early')}. Dropped into Live Attendance in realtime!`;
+        bannerEl.textContent = `All 4 security layers verified! ${res.student?.full_name || resolvedStudentId} marked as ${res.punctualityLabel || res.punctuality || 'PRESENT'}. Dropped into Live Attendance in realtime!`;
       }
 
       // Store student & session state
@@ -2157,33 +1594,11 @@ async function handleQrScanned(data) {
       state.pendingQrToken = null;
       updateQrBadges();
 
-      res.attendance_type = attendance_type;
-      if (attendance_type === 'clock_out') {
-        state.clockedOut = true;
-        localStorage.setItem('oasis_today_clocked_out', 'true');
-        localStorage.setItem('oasis_today_clockout_time', new Date().toISOString());
-      } else {
-        state.clockedIn = true;
-        state.clockedOut = false;
-        localStorage.setItem('oasis_today_clocked_in', 'true');
-        localStorage.setItem('oasis_today_clockin_time', new Date().toISOString());
-      }
-
-      // Record in local history for instant display under Recent Attendance Activity
-      const newRecord = {
-        id: res.attendance?.id || `hist-${Date.now()}`,
-        type: attendance_type,
-        recorded_at: new Date().toISOString(),
-        verification_status: res.status || 'VERIFIED',
-        punctuality: res.punctuality || 'ON_TIME',
-        locations: { name: res.location_name || res.details?.location?.name || 'Sandlip Oasis Campus' },
-        risk_score: res.riskScore || 100,
-      };
-      try {
-        const existingHist = JSON.parse(localStorage.getItem('oasis_attendance_history') || '[]');
-        existingHist.unshift(newRecord);
-        localStorage.setItem('oasis_attendance_history', JSON.stringify(existingHist.slice(0, 30)));
-      } catch (_) {}
+      // Mark student as Clocked In
+      state.clockedIn = true;
+      state.clockedOut = false;
+      localStorage.setItem('oasis_today_clocked_in', 'true');
+      localStorage.setItem('oasis_today_clockin_time', new Date().toISOString());
 
       clearTimeout(safetyTimer);
       isScanningValidationActive = false;
@@ -2274,19 +1689,7 @@ async function handleQrScanned(data) {
       if (iconGeo) iconGeo.className = 'hud-step-icon ok';
     }
 
-    const isNoSession = err.status === 403 && (data.noSessionCreated || (err.message && (err.message.toLowerCase().includes('session') || err.message.toLowerCase().includes('open a session'))));
-
-    if (isNoSession) {
-      state.activeSession = null;
-      updateSessionUI(null);
-      if (badgeQr) { badgeQr.className = 'hud-badge err'; badgeQr.textContent = 'NO SESSION'; }
-      if (iconQr) iconQr.className = 'hud-step-icon err';
-      if (titleEl) titleEl.textContent = 'Session Not Open';
-      if (bannerEl) {
-        bannerEl.className = 'hud-banner failed';
-        bannerEl.textContent = 'Please wait for an admin to open a session before clocking in.';
-      }
-    } else if (isDuplicate) {
+    if (isDuplicate) {
       if (badgeQr) { badgeQr.className = 'hud-badge err'; badgeQr.textContent = 'REUSED'; }
       if (iconQr) iconQr.className = 'hud-step-icon err';
       if (titleEl) titleEl.textContent = 'Single Scan Enforced';
@@ -2449,76 +1852,6 @@ async function updateServerStatusPill() {
   if (homeDot) homeDot.className = dotClass;
 }
 
-// ====== Smart Physical Device Identity & Cross-Browser Synchronization ======
-async function initializeDeviceIdentity() {
-  const hw = getHardwareDeviceIdentity();
-  state.hardwareProfile = hw.hardwareProfile;
-
-  // Consistent hardware MAC across browsers on same device
-  let currentMac = localStorage.getItem('oasis_device_mac');
-  if (!currentMac || !/^[0-9A-Fa-f:]{17}$/.test(currentMac)) {
-    currentMac = hw.hardwareMac;
-    localStorage.setItem('oasis_device_mac', currentMac);
-  }
-  state.deviceMac = currentMac;
-
-  // Consistent hardware device ID across browsers on same device
-  let currentDevId = localStorage.getItem('oasis_device_id');
-  if (!currentDevId || currentDevId === 'default-device-id') {
-    currentDevId = hw.hardwareDeviceId;
-    localStorage.setItem('oasis_device_id', currentDevId);
-  }
-  state.deviceId = currentDevId;
-
-  // Query backend /api/device/identify to recognize physical machine across browsers
-  try {
-    const res = await api('/device/identify', {
-      method: 'POST',
-      body: {
-        hardware_device_id: state.deviceId,
-        hardware_mac: state.deviceMac,
-        user_agent: navigator.userAgent,
-        platform: navigator.platform,
-      },
-      auth: false,
-      timeoutMs: 3500,
-    });
-
-    if (res && res.recognized) {
-      if (res.boundStudent) {
-        state.boundStudent = res.boundStudent;
-        localStorage.setItem('oasis_bound_device_student_id', res.boundStudent.student_id);
-        localStorage.setItem('oasis_bound_device_student_name', res.boundStudent.full_name);
-
-        const sidInput = document.getElementById('student-id');
-        if (sidInput && !sidInput.value) {
-          sidInput.value = res.boundStudent.student_id;
-        }
-
-        if (res.todayStatus) {
-          if (res.todayStatus.clockedIn) {
-            state.clockedIn = true;
-            localStorage.setItem('oasis_today_clocked_in', 'true');
-          }
-          if (res.todayStatus.clockedOut) {
-            state.clockedOut = true;
-            localStorage.setItem('oasis_today_clocked_out', 'true');
-          }
-        }
-      }
-
-      if (res.device?.mac_address) {
-        state.deviceMac = res.device.mac_address;
-        localStorage.setItem('oasis_device_mac', res.device.mac_address);
-      }
-    }
-  } catch (identErr) {
-    console.warn('Physical device identification notice:', identErr.message);
-  }
-
-  updateDeviceBadge();
-}
-
 // Periodically check server connectivity every 30s
 setInterval(updateServerStatusPill, 30000);
 
@@ -2531,9 +1864,6 @@ setInterval(updateServerStatusPill, 30000);
       localStorage.removeItem('oasis_api_base');
     }
   } catch (_) {}
-
-  // Identify physical hardware and synchronize binding across browsers
-  await initializeDeviceIdentity();
 
   // Wire up QR image drag/upload
   setupQrImageUpload();
@@ -2550,58 +1880,6 @@ setInterval(updateServerStatusPill, 30000);
 
   updateServerStatusPill();
   flushOfflineAttendanceQueue();
-
-  // Connect to live real-time session updates stream for 0ms active/closed sync
-  setupSessionRealtimeStream();
-
-  // Load session status right away and sync every 3 seconds
-  await loadSession();
-  setInterval(loadSession, 3000);
-
-  // Instant refresh when user returns to tab or window gains focus
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      loadSession();
-      if (!sessionEventSource || sessionEventSource.readyState === EventSource.CLOSED) {
-        setupSessionRealtimeStream();
-      }
-    }
-  });
-  window.addEventListener('focus', () => {
-    loadSession();
-  });
-
-  // Check for device reset / registration link (?token=... or /register-device)
-  const urlParams = new URLSearchParams(window.location.search);
-  const resetToken = urlParams.get('token');
-  const isResetPath = window.location.pathname.includes('register-device');
-
-  if (resetToken && !urlParams.get('location_id')) {
-    try {
-      const meRes = await api('/auth/me', { auth: false, headers: { Authorization: `Bearer ${resetToken}` }, timeoutMs: 3500 });
-      if (meRes && meRes.student) {
-        showScreen('screen-register');
-        clearError('register-error');
-        const nameEl = document.getElementById('reg-name');
-        const sidEl = document.getElementById('reg-sid');
-        const emailEl = document.getElementById('reg-email');
-        if (nameEl) nameEl.value = meRes.student.full_name || '';
-        if (sidEl) sidEl.value = meRes.student.student_id || '';
-        if (emailEl) emailEl.value = meRes.student.email || '';
-        setError('register-error', `Device reset token verified for ${meRes.student.full_name}. Click "Register & Clock In" below to bind this device.`, true);
-        return;
-      }
-    } catch (e) {
-      console.warn('Device reset token validation note:', e.message);
-      showScreen('screen-register');
-      setError('register-error', 'Registration link verified. Please fill in your student details to bind this new device.');
-      return;
-    }
-  } else if (isResetPath) {
-    showScreen('screen-register');
-    clearError('register-error');
-    return;
-  }
 
   if (state.sessionToken) {
     try {

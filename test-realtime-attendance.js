@@ -74,18 +74,17 @@ async function runRealtimeTest() {
       }
     });
   });
-  sseReq.on('error', (e) => console.log('SSE Stream Notice:', e.message));
   sseReq.end();
 
   // Wait 400ms for SSE connection
   await new Promise(r => setTimeout(r, 400));
 
   console.log('=== Step 5: Student Scans QR Code with Camera ===');
-  console.log('Telemetry sent: IP=127.0.0.1, MAC=BE:64:B4:14:4D:67, GPS=(8.92811, 11.33090)');
+  console.log('Telemetry sent: IP=127.0.0.1, MAC=BE:64:B4:14:4D:67, GPS=(8.9280843, 11.3307533)');
   const clockinPayload = {
-    student_id: 'SAN-2026-003', // Emmanuel Timothy
-    latitude: 8.92811,
-    longitude: 11.33090,
+    student_id: 'SAN-2026-014', // Ada Lovelace
+    latitude: 8.9280843,
+    longitude: 11.3307533,
     accuracy: 8,
     device_mac: 'BE:64:B4:14:4D:67',
     location_id: 'c0000000-0000-0000-0000-000000000001',

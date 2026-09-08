@@ -13,59 +13,22 @@
   let editingStudent = null;
   let deviceModalStudent = null;
   let resetLink = '';
-  let copiedResetLink = false;
-  let copyTimeout = null;
-
-  async function copyToClipboard(text) {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-      }
-      copiedResetLink = true;
-      if (copyTimeout) clearTimeout(copyTimeout);
-      copyTimeout = setTimeout(() => { copiedResetLink = false; }, 3000);
-    } catch (err) {
-      console.error('Failed to copy', err);
-    }
-  }
 
   let newName = '', newId = '', newEmail = '';
 
-  async function load(showSpinner = false) {
-    if (showSpinner || students.length === 0) loading = true;
-    error = '';
+  async function load() {
+    loading = true; error = '';
     try {
       const res = await api(`/admin/students${search ? `?search=${encodeURIComponent(search)}` : ''}`);
       students = res.students || [];
     } catch (e) { error = e.message; }
     finally { loading = false; }
   }
-  load(true);
+  load();
 
-  const unsubDevices = subscribeTable('devices', '*', () => load(false));
-  const unsubStudents = subscribeTable('students', '*', () => load(false));
+  const unsubDevices = subscribeTable('devices', '*', () => load());
+  const unsubStudents = subscribeTable('students', '*', () => load());
   onDestroy(() => { unsubDevices(); unsubStudents(); });
-
-  async function toggleAddForm() {
-    showAddForm = !showAddForm;
-    error = '';
-    successMsg = '';
-    if (showAddForm && !newId) {
-      try {
-        const res = await api('/auth/next-id');
-        if (res && res.nextId) newId = res.nextId;
-      } catch (_) {}
-    }
-  }
 
   async function addStudent() {
     error = ''; successMsg = '';
@@ -120,14 +83,11 @@
   }
 
   async function resetDevice(s) {
-    error = ''; successMsg = ''; resetLink = ''; copiedResetLink = false;
+    error = ''; successMsg = ''; resetLink = '';
     try {
       const res = await api(`/admin/students/${s.id}/reset-device`, { method: 'POST' });
       resetLink = res.registrationLink;
       successMsg = `Device reset for ${s.full_name}. Share the registration link with the student.`;
-      if (deviceModalStudent && deviceModalStudent.id === s.id) {
-        deviceModalStudent = null;
-      }
       load();
     } catch (e) { error = e.message; }
   }
@@ -163,7 +123,7 @@
       </div>
       <button class="btn btn-primary" on:click={load}>Search</button>
     </div>
-    <button class="btn {showAddForm ? 'ghost' : 'btn-teal'}" on:click={toggleAddForm}>
+    <button class="btn {showAddForm ? 'ghost' : 'btn-teal'}" on:click={() => { showAddForm = !showAddForm; error = ''; successMsg = ''; }}>
       <Icon name={showAddForm ? 'x' : 'plus'} size={15} />
       <span>{showAddForm ? 'Cancel' : 'Add Student'}</span>
     </button>
@@ -182,21 +142,8 @@
           <input bind:value={newName} placeholder="e.g. Ada Lovelace" />
         </div>
         <div class="field">
-          <div class="field-label-row">
-            <label>Student / Matric ID</label>
-            <span class="badge-auto-tag">Auto-Generated</span>
-          </div>
-          <div class="field-with-btn">
-            <input bind:value={newId} placeholder="e.g. SAN-2026-002" />
-            <button type="button" class="btn-input-reload" title="Refresh next ID based on admin/db" on:click={async () => {
-              try {
-                const res = await api('/auth/next-id');
-                if (res && res.nextId) newId = res.nextId;
-              } catch (_) {}
-            }}>
-              <Icon name="refresh" size={13} color="#0f766e" />
-            </button>
-          </div>
+          <label>Student / Matric ID</label>
+          <input bind:value={newId} placeholder="e.g. SAN-2026-014" />
         </div>
         <div class="field">
           <label>Institutional Email</label>
@@ -216,26 +163,10 @@
   {#if resetLink}
     <div class="reset-link-card">
       <div class="reset-link-header">
-        <div class="reset-link-title">
-          <Icon name="key" size={16} color="#0f766e" />
-          <strong>Direct Registration & Passkey Link:</strong>
-        </div>
-        <div class="reset-link-actions">
-          <button class="btn btn-sm {copiedResetLink ? 'btn-green' : 'btn-primary'}" on:click={() => copyToClipboard(resetLink)}>
-            <Icon name={copiedResetLink ? 'check' : 'copy'} size={13} />
-            <span>{copiedResetLink ? 'Copied to Clipboard!' : 'Copy Link'}</span>
-          </button>
-          <a class="btn btn-sm ghost" href={resetLink} target="_blank" rel="noopener noreferrer">
-            <Icon name="external-link" size={13} />
-            <span>Open PWA</span>
-          </a>
-          <button class="btn btn-sm ghost" on:click={() => { resetLink = ''; copiedResetLink = false; }} title="Dismiss">
-            <Icon name="x" size={13} />
-          </button>
-        </div>
+        <Icon name="key" size={16} color="#0f766e" />
+        <strong>Direct Registration Passkey Link:</strong>
       </div>
       <code>{resetLink}</code>
-      <p class="hint">Share this secure link with the student so they can bind their hardware device or authenticate directly on their phone or laptop.</p>
     </div>
   {/if}
 
@@ -321,10 +252,6 @@
           {/if}
         </div>
         <div class="modal-actions">
-          <button class="btn btn-warn" on:click={() => resetDevice(deviceModalStudent)} title="Revoke registered devices and generate a fresh registration link">
-            <Icon name="refresh" size={13} />
-            <span>Reset Trusted Device</span>
-          </button>
           <button class="btn ghost" on:click={() => (deviceModalStudent = null)}>Close</button>
         </div>
       </div>
@@ -333,7 +260,7 @@
 
   <!-- Table -->
   <div class="table-wrap">
-    {#if loading && students.length === 0}
+    {#if loading}
       <p class="muted center pad-24">Loading student directory…</p>
     {:else if students.length === 0}
       <div class="empty-state">
@@ -357,20 +284,20 @@
           {#each students as s}
             <tr class:dimmed={s.status === 'suspended'}>
               <td class="bold">{s.full_name}</td>
-              <td class="nowrap-cell"><code class="sid-code">{s.student_id}</code></td>
-              <td class="mono nowrap-cell">
+              <td><code>{s.student_id}</code></td>
+              <td class="mono">
                 <code>{s.registered_mac || (s.devices?.[0]?.mac_address) || '—'}</code>
               </td>
-              <td class="mono nowrap-cell">
+              <td class="mono">
                 <span class="ip-chip">{s.registered_ip || (s.devices?.[0]?.ip_address) || '—'}</span>
               </td>
-              <td class="nowrap-cell">
+              <td>
                 <button class="device-badge-btn" on:click={() => (deviceModalStudent = s)}>
                   <Icon name="smartphone" size={13} />
-                  <span>{activeDevices(s).length}&nbsp;device{activeDevices(s).length !== 1 ? 's' : ''}</span>
+                  <span>{activeDevices(s).length} device{activeDevices(s).length !== 1 ? 's' : ''}</span>
                 </button>
               </td>
-              <td class="nowrap-cell">
+              <td>
                 <span class="pill {s.status === 'suspended' ? 'pill-suspended' : 'pill-active'}">
                   {s.status === 'suspended' ? 'Suspended' : 'Active'}
                 </span>
@@ -467,20 +394,6 @@
 
   .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
   .field { display: flex; flex-direction: column; gap: 6px; }
-  .field-label-row { display: flex; justify-content: space-between; align-items: center; }
-  .badge-auto-tag {
-    font-size: 10px; font-weight: 700; color: #0f766e; background: #f0fdfa;
-    border: 1px solid #ccfbf1; padding: 1px 6px; border-radius: 9999px;
-    text-transform: none; letter-spacing: 0.02em;
-  }
-  .field-with-btn { position: relative; display: flex; align-items: center; }
-  .field-with-btn input { width: 100%; padding-right: 36px; }
-  .btn-input-reload {
-    position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
-    background: transparent; border: none; color: #0f766e; cursor: pointer;
-    padding: 5px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
-  }
-  .btn-input-reload:hover { background: #f0fdfa; }
   label { font-size: 12px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.03em; }
   input {
     padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px;
@@ -499,108 +412,50 @@
     background: #f0fdfa; border: 1px solid #ccfbf1; border-radius: 10px;
     padding: 14px 18px; display: flex; flex-direction: column; gap: 8px;
   }
-  .reset-link-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-  .reset-link-title { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #0f766e; }
-  .reset-link-actions { display: flex; align-items: center; gap: 6px; }
+  .reset-link-header { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #0f766e; }
   .reset-link-card code {
     background: white; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccfbf1;
     font-size: 12.5px; color: #0f766e; word-break: break-all;
   }
 
   .table-wrap {
-    background: white; border: 1px solid #e2e8f0; border-radius: 12px;
+    background: white; border: 1px solid #e2e8f0; border-radius: 14px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
     width: 100%;
-  }
-  .table-wrap::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
   }
   table {
     width: 100%;
+    min-width: 680px;
     border-collapse: collapse;
-    font-size: 12px;
-    table-layout: auto;
+    font-size: 13.5px;
   }
   th {
-    background: #f8fafc; text-align: left; padding: 8px 10px;
-    color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase;
-    letter-spacing: 0.03em; border-bottom: 1px solid #e2e8f0;
-    white-space: nowrap;
+    background: #f8fafc; text-align: left; padding: 12px 20px;
+    color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
   }
-  td {
-    padding: 7px 10px;
-    border-bottom: 1px solid #f1f5f9;
-    color: #334155;
-    white-space: nowrap;
-    font-size: 12px;
-  }
+  td { padding: 13px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
   tr.dimmed { opacity: 0.6; }
 
-  code {
-    white-space: nowrap;
-    word-break: keep-all;
-    display: inline-block;
-  }
-
-  .sid-code {
-    white-space: nowrap;
-    word-break: keep-all;
-    font-weight: 600;
-    display: inline-block;
-  }
-
   .bold { font-weight: 600; color: #0f172a; }
-  .muted { color: #94a3b8; font-size: 11.5px; }
-  .mono { font-family: monospace; font-size: 11.5px; }
+  .muted { color: #94a3b8; }
+  .mono { font-family: monospace; font-size: 12px; }
   .center { text-align: center; }
   .pad-16 { padding: 16px; }
   .pad-24 { padding: 24px; }
-  .count-txt { font-size: 12px; color: #64748b; margin: 0; }
+  .count-txt { font-size: 12.5px; color: #64748b; margin: 0; }
 
-  .nowrap-cell {
-    white-space: nowrap;
-  }
-
-  .actions {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    flex-wrap: nowrap;
-    white-space: nowrap;
-  }
-  .actions .btn {
-    flex-shrink: 0;
-    white-space: nowrap;
-    padding: 4px 8px;
-    font-size: 11px;
-  }
+  .actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
   .device-badge-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: #f0fdfa;
-    border: 1px solid #ccfbf1;
-    color: #0f766e;
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  .device-badge-btn span {
-    white-space: nowrap;
-    display: inline-block;
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #f0fdfa; border: 1px solid #ccfbf1; color: #0f766e;
+    padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
   }
   .device-badge-btn:hover { background: #ccfbf1; }
 

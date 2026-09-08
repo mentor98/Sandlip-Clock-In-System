@@ -1,6 +1,5 @@
 <script>
   import { api, setAdminSession } from './lib/api.js';
-  import { reconnectRealtime } from './lib/realtime.js';
   import Icon from './lib/Icon.svelte';
 
   export let onLoggedIn;
@@ -24,7 +23,6 @@
         auth: false,
       });
       setAdminSession(res.sessionToken);
-      try { reconnectRealtime(); } catch (_) {}
       onLoggedIn();
     } catch (e) {
       error = e.message || 'Invalid admin ID or password.';
@@ -40,13 +38,19 @@
   <!-- Centered Sign In Form -->
   <section class="form-container">
     <div class="form-card">
-      <div class="admin-logo-center">
-        <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="ClockIn Logo" class="admin-logo-img" />
+      <div class="brand-header">
+        <div class="logo-box">
+          <Icon name="clock" size={24} color="#ffffff" strokeWidth={2.2} />
+        </div>
+        <div>
+          <h1>Oasis ClockIn</h1>
+          <p class="sub">Enterprise Administration Portal</p>
+        </div>
       </div>
 
-      <div class="welcome-text center-text">
-        <h2>Admin Login</h2>
-        <p class="sub">Enterprise Administration Portal</p>
+      <div class="welcome-text">
+        <h2>Admin Sign In</h2>
+        <p>Enter your administrator credentials to access real-time attendance telemetry and controls.</p>
       </div>
 
       <div class="field">
@@ -89,6 +93,13 @@
           <span>{error}</span>
         </div>
       {/if}
+
+      <div class="switch-app-wrap">
+        <a href="/" class="student-switch-btn">
+          <Icon name="smartphone" size={16} color="#0f766e" strokeWidth={2} />
+          <span>Switch to Student Attendance PWA</span>
+        </a>
+      </div>
     </div>
   </section>
 </main>
@@ -102,7 +113,7 @@
     background: #f8fafc;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     margin: 0;
-    padding: 28px 20px;
+    padding: 32px 20px;
     box-sizing: border-box;
   }
 
@@ -120,7 +131,7 @@
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 16px;
-    padding: 34px 30px 28px;
+    padding: 36px 32px;
     box-shadow: 0 4px 20px rgba(7, 59, 120, 0.08);
     display: flex;
     flex-direction: column;
@@ -134,40 +145,57 @@
     border-radius: 3px 3px 0 0;
   }
 
-  .admin-logo-center {
-    height: 52px;
-    max-width: 180px;
+  .brand-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+
+  .logo-box {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #32F000 0%, #0db872 32%, #0284c7 68%, #073B78 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 12px;
-  }
-  .admin-logo-img {
-    height: 100%;
-    width: auto;
-    max-width: 100%;
-    object-fit: contain;
-    display: block;
+    box-shadow: 0 4px 16px rgba(50, 240, 0, 0.35);
+    flex-shrink: 0;
   }
 
-  .welcome-text.center-text {
-    text-align: center;
-    margin-bottom: 22px;
-  }
-
-  .welcome-text h2 {
-    font-size: 23px;
+  h1 {
+    margin: 0;
+    font-size: 20px;
     font-weight: 800;
     color: #071527;
-    margin: 0 0 4px;
     letter-spacing: -0.02em;
   }
 
-  .welcome-text .sub {
-    margin: 0;
-    font-size: 13px;
+  .sub {
+    margin: 2px 0 0;
+    font-size: 12.5px;
     color: #64748b;
     font-weight: 500;
+  }
+
+  .welcome-text {
+    margin-bottom: 24px;
+  }
+
+  .welcome-text h2 {
+    font-size: 24px;
+    font-weight: 800;
+    color: #071527;
+    margin: 0 0 6px;
+    letter-spacing: -0.02em;
+  }
+
+  .welcome-text p {
+    margin: 0;
+    font-size: 13.5px;
+    color: #64748b;
+    line-height: 1.5;
   }
 
   .field {
@@ -260,20 +288,54 @@
     gap: 8px;
   }
 
+  .switch-app-wrap {
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid #e2e8f0;
+    text-align: center;
+  }
+
+  .student-switch-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 13.5px;
+    color: #073B78;
+    font-weight: 700;
+    text-decoration: none;
+    padding: 11px 16px;
+    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    width: 100%;
+    box-sizing: border-box;
+    transition: all 0.15s;
+  }
+
+  .student-switch-btn:hover {
+    background: #f0fdf4;
+    border-color: #32F000;
+    color: #15803d;
+  }
+
   @media (max-width: 480px) {
     .login-center-page {
       padding: 16px 12px;
     }
     .form-card {
-      padding: 24px 18px 20px;
+      padding: 24px 18px;
       border-radius: 14px;
     }
     .welcome-text h2 {
       font-size: 20px;
     }
-    .admin-logo-center {
-      height: 44px;
-      margin-bottom: 8px;
+    h1 {
+      font-size: 18px;
+    }
+    .logo-box {
+      width: 40px;
+      height: 40px;
     }
     .input-wrap input {
       font-size: 14px;

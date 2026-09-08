@@ -26,31 +26,8 @@ function getSharedEventSource() {
       sharedEventSource.addEventListener('realtime', (e) => {
         try {
           const parsed = JSON.parse(e.data);
-          const normalized = {
-            ...parsed,
-            eventType: parsed.eventType || parsed.action || 'INSERT',
-          };
           sseListeners.forEach((listener) => {
-            try { listener(normalized); } catch (_) {}
-          });
-        } catch (_) {}
-      });
-
-      sharedEventSource.addEventListener('session', (e) => {
-        try {
-          const parsed = JSON.parse(e.data);
-          const sessionRecord = parsed.session || (parsed.deletedId ? { id: parsed.deletedId } : parsed);
-          const isDelete = parsed.active === false || parsed.eventType === 'DELETE' || parsed.action === 'DELETE' || Boolean(parsed.deletedId);
-          const normalized = {
-            eventType: isDelete ? 'DELETE' : 'UPDATE',
-            action: isDelete ? 'DELETE' : 'UPDATE',
-            table: 'attendance_sessions',
-            record: sessionRecord,
-            session: sessionRecord,
-            deletedId: parsed.deletedId || (isDelete ? sessionRecord?.id : null),
-          };
-          sseListeners.forEach((listener) => {
-            try { listener(normalized); } catch (_) {}
+            try { listener(parsed); } catch (_) {}
           });
         } catch (_) {}
       });
@@ -76,14 +53,6 @@ function getSharedEventSource() {
   return sharedEventSource;
 }
 
-export function reconnectRealtime() {
-  if (sharedEventSource) {
-    try { sharedEventSource.close(); } catch (_) {}
-    sharedEventSource = null;
-  }
-  return getSharedEventSource();
-}
-
 /**
  * Subscribe to INSERT / UPDATE / DELETE events on a table.
  * Combines native SSE stream from Express backend with Supabase channels.
@@ -95,13 +64,7 @@ export function subscribeTable(table, event = '*', callback) {
   // 1. Shared SSE listener
   const sseHandler = (payload) => {
     if (!payload) return;
-    const pTable = String(payload.table || '').toLowerCase();
-    const tTable = String(table || '').toLowerCase();
-    const isSessionMatch =
-      (tTable === 'sessions' || tTable === 'attendance_sessions') &&
-      (pTable === 'sessions' || pTable === 'attendance_sessions');
-
-    if (!table || table === '*' || pTable === tTable || isSessionMatch) {
+    if (!table || table === '*' || payload.table === table) {
       callback(payload);
     }
   };

@@ -203,65 +203,41 @@
     );
   }
 
-  async function generateQr(loc, withAutoRotate = autoRotate) {
+  async function generateQr(loc) {
     qrGenerating = true;
     error = '';
     clearInterval(qrTimer);
-    qrTimer = null;
     try {
-      const res = await api(`/admin/locations/${loc.id}/generate-qr`, {
-        method: 'POST',
-        body: { auto_rotate: withAutoRotate },
-      });
+      const res = await api(`/admin/locations/${loc.id}/generate-qr`, { method: 'POST' });
       qrLocation = loc;
       qrSrc = `data:image/png;base64,${res.qr_png_base64}`;
+      qrExpiry = res.expires_in_seconds || 25;
       qrAdminIp = res.admin_ip || '127.0.0.1';
 
-      if (withAutoRotate) {
-        qrExpiry = res.expires_in_seconds || 25;
-        qrTimer = setInterval(() => {
-          if (!autoRotate) {
-            clearInterval(qrTimer);
-            qrTimer = null;
-            return;
+      qrTimer = setInterval(() => {
+        qrExpiry -= 1;
+        if (qrExpiry <= 0) {
+          clearInterval(qrTimer);
+          if (autoRotate && qrLocation) {
+            generateQr(qrLocation);
+          } else {
+            qrSrc = '';
           }
-          qrExpiry -= 1;
-          if (qrExpiry <= 0) {
-            clearInterval(qrTimer);
-            qrTimer = null;
-            if (autoRotate && qrLocation) {
-              generateQr(qrLocation, true);
-            }
-          }
-        }, 1000);
-      } else {
-        qrExpiry = 0;
-      }
+        }
+      }, 1000);
     } catch (e) { error = e.message; }
     finally { qrGenerating = false; }
   }
 
-  async function toggleAutoRotate() {
-    autoRotate = !autoRotate;
-    if (autoRotate) {
-      if (qrLocation) await generateQr(qrLocation, true);
-    } else {
-      clearInterval(qrTimer);
-      qrTimer = null;
-      if (qrLocation) await generateQr(qrLocation, false);
-    }
-  }
-
   function closeQr() {
     clearInterval(qrTimer);
-    qrTimer = null;
     qrLocation = null;
     qrSrc = '';
     qrExpiry = 0;
   }
 
   function refreshQr() {
-    if (qrLocation) generateQr(qrLocation, autoRotate);
+    if (qrLocation) generateQr(qrLocation);
   }
 </script>
 
@@ -386,19 +362,16 @@
       </div>
 
       <div class="qr-body">
-        {#if qrSrc}
+        {#if qrSrc && qrExpiry > 0}
           <img src={qrSrc} alt="QR code for {qrLocation.name}" class="qr-img" />
-          {#if autoRotate && qrExpiry > 0}
-            <div class="expiry" class:expiry-warn={qrExpiry <= 10}>
-              <Icon name="clock" size={14} />
-              <span>Auto-rotating dynamically in <strong>{qrExpiry}s</strong></span>
-            </div>
-          {:else if !autoRotate}
-            <div class="expiry paused">
-              <Icon name="pause" size={13} color="#b45309" />
-              <span>Auto-rotation <strong>Paused</strong> · Static QR</span>
-            </div>
-          {/if}
+          <div class="expiry" class:expiry-warn={qrExpiry <= 10}>
+            <Icon name="clock" size={14} />
+            {#if qrExpiry > 0}
+              <span>Rotating dynamically in <strong>{qrExpiry}s</strong></span>
+            {:else}
+              <span>Expired — generating new token</span>
+            {/if}
+          </div>
 
           <div class="qr-sec-info">
             <div class="sec-item">
@@ -407,38 +380,28 @@
             </div>
             <div class="sec-item">
               <Icon name="smartphone" size={13} color="#0284c7" />
-              <span>Student Network Subnet &amp; Device Bound</span>
+              <span>Student Network Subnet & Device Bound</span>
             </div>
           </div>
         {:else}
           <div class="qr-expired">
             <Icon name="clock" size={36} color="#94a3b8" />
-            <p>{qrGenerating ? 'Generating QR code…' : 'QR code refreshing…'}</p>
+            <p>QR code refreshing…</p>
           </div>
         {/if}
       </div>
 
       <div class="qr-footer">
         <div class="modal-ctrl-row">
-          <button class="btn btn-primary" on:click={refreshQr} disabled={qrGenerating} style="flex: 1;">
+          <button class="btn btn-primary full" on:click={refreshQr} disabled={qrGenerating}>
             <Icon name="refresh" size={14} />
             <span>{qrGenerating ? 'Generating…' : 'Rotate QR Now'}</span>
           </button>
-          <button
-            type="button"
-            class="toggle-switch-btn {autoRotate ? 'on' : 'off'}"
-            on:click={toggleAutoRotate}
-            aria-pressed={autoRotate}
-            title={autoRotate ? 'Click to stop dynamic auto-rotation' : 'Click to resume dynamic auto-rotation (25s)'}
-          >
-            <span class="switch-slider">
-              <span class="switch-knob"></span>
-            </span>
-            <span class="switch-text">
-              Auto-rotate: <strong>{autoRotate ? '25s' : 'Off'}</strong>
-            </span>
-          </button>
         </div>
+        <label class="auto-rotate-check">
+          <input type="checkbox" bind:checked={autoRotate} />
+          <span>Auto-rotate continuously every 25s for projector</span>
+        </label>
         <p class="hint">Tokens are cryptographically signed with admin network identity and single-use nonce.</p>
       </div>
     </div>
@@ -572,7 +535,6 @@
     background: #f1f5f9; padding: 6px 16px; border-radius: 999px; font-weight: 500;
   }
   .expiry.expiry-warn { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-  .expiry.paused { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; font-weight: 600; }
 
   .qr-expired {
     width: 250px; height: 250px; border-radius: 12px;
@@ -590,65 +552,12 @@
   .sec-item { display: flex; align-items: center; gap: 7px; }
   .sec-item code { font-size: 11px; background: #e2e8f0; padding: 1px 5px; border-radius: 4px; }
 
-  .modal-ctrl-row { width: 100%; display: flex; align-items: center; gap: 10px; }
-
-  .toggle-switch-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: #f8fafc;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-    color: #475569;
-    transition: all 0.2s ease;
-    user-select: none;
-    white-space: nowrap;
-    flex-shrink: 0;
+  .auto-rotate-check {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 12px; color: #475569; font-weight: 600; cursor: pointer;
+    margin: 4px 0;
   }
-  .toggle-switch-btn:hover {
-    border-color: #94a3b8;
-    background: #f1f5f9;
-  }
-  .toggle-switch-btn.on {
-    background: #ecfdf5;
-    border-color: #86efac;
-    color: #065f46;
-  }
-  .toggle-switch-btn.off {
-    background: #fffbeb;
-    border-color: #fde68a;
-    color: #92400e;
-  }
-  .switch-slider {
-    width: 28px;
-    height: 16px;
-    background: #cbd5e1;
-    border-radius: 999px;
-    position: relative;
-    transition: background 0.2s ease;
-    flex-shrink: 0;
-  }
-  .toggle-switch-btn.on .switch-slider {
-    background: #10b981;
-  }
-  .switch-knob {
-    width: 12px;
-    height: 12px;
-    background: white;
-    border-radius: 50%;
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-  }
-  .toggle-switch-btn.on .switch-knob {
-    transform: translateX(12px);
-  }
+  .modal-ctrl-row { width: 100%; }
 
   .qr-footer { padding: 0 22px 22px; display: flex; flex-direction: column; gap: 8px; }
   .hint { font-size: 11px; color: #64748b; text-align: center; margin: 0; }

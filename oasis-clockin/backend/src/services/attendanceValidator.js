@@ -34,17 +34,7 @@
 const { supabaseAdmin } = require('../config/supabase');
 const { haversineDistanceMeters } = require('../utils/geofence');
 const { verifyLocationToken, decodeLocationToken } = require('../utils/qrToken');
-const { inMemorySessions } = require('../utils/sharedSessions');
 const ipRangeCheck = require('../utils/ipRangeCheck');
-const eventBus = require('../utils/eventBus');
-
-// ── Sandlip Oasis Location & Security Configuration ──────────────────────────
-const OASIS_LATITUDE = parseFloat(process.env.OASIS_LATITUDE) || 8.92811;
-const OASIS_LONGITUDE = parseFloat(process.env.OASIS_LONGITUDE) || 11.33090;
-const OASIS_GEOFENCE_RADIUS_METERS = parseInt(process.env.OASIS_GEOFENCE_RADIUS_METERS, 10) || 150;
-const OASIS_MAX_GPS_ACCURACY_METERS = parseInt(process.env.OASIS_MAX_GPS_ACCURACY_METERS, 10) || 100;
-const OASIS_REFERENCE_PRIVATE_IP = process.env.OASIS_REFERENCE_PRIVATE_IP || '192.168.1.156';
-const OASIS_REFERENCE_MAC = process.env.OASIS_REFERENCE_MAC || 'BE:64:B4:14:4D:67';
 
 // In-memory single-use QR and session scan registry to guarantee instant duplicate rejection
 const scannedStudentNonces = new Set();
@@ -140,24 +130,20 @@ function calculatePunctuality({ activeSession, targetLocation, org, currentTime 
   const scheduledTotalMinutes = scheduledHour * 60 + scheduledMinute;
   const diffMinutes = currentTotalMinutes - scheduledTotalMinutes;
 
-  // Punctuality threshold ranges:
-  // Early:   7:00am - 8:30am (up to 8:39am) -> 'EARLY'
-  // Warning: 8:40am - 9:15am -> 'WARNING'
-  // Late:    9:16am - 5:00pm -> 'LATE'
-  const warningStartOffset = 10; // 08:40 AM (8:30 + 10 mins)
-  const warningEndOffset = 45;   // 09:15 AM (8:30 + 45 mins)
+  const graceMinutes = (org && org.grace_period_minutes != null) ? org.grace_period_minutes : 15;
+  const earlyThreshold = (org && org.early_threshold_minutes != null) ? org.early_threshold_minutes : 10;
 
-  let punctuality = 'EARLY';
-  let punctualityLabel = 'Early';
+  let punctuality = 'PRESENT';
+  let punctualityLabel = 'Present (On Time)';
   let isLate = false;
 
-  if (diffMinutes < warningStartOffset) {
+  if (diffMinutes < -earlyThreshold) {
     punctuality = 'EARLY';
-    punctualityLabel = 'Early';
+    punctualityLabel = 'Present (Early)';
     isLate = false;
-  } else if (diffMinutes <= warningEndOffset) {
-    punctuality = 'WARNING';
-    punctualityLabel = 'Warning';
+  } else if (diffMinutes <= graceMinutes) {
+    punctuality = 'PRESENT';
+    punctualityLabel = 'Present (On Time)';
     isLate = false;
   } else {
     punctuality = 'LATE';
@@ -255,18 +241,8 @@ async function validateAttendance(params) {
     if (s2) student = s2;
   }
 
-  // Fallback by student Matric ID (e.g. SAN-2026-014)
-  if (!student && studentId) {
-    const { data: bySid } = await supabaseAdmin
-      .from('students')
-      .select('id, full_name, student_id, email, status, registered_mac, registered_ip')
-      .eq('student_id', String(studentId).trim())
-      .maybeSingle();
-    if (bySid) student = bySid;
-  }
-
   if (!student) {
-    criticalFailures.push("You don't have an account. Please register to get an ID");
+    criticalFailures.push('Student account not found.');
     securityAnomalies.push({ type: 'ACCOUNT_NOT_FOUND', severity: 'HIGH' });
   } else if (student.status && student.status === 'suspended') {
     criticalFailures.push(`Student account is currently suspended.`);
@@ -433,127 +409,88 @@ async function validateAttendance(params) {
   const isSubnetMatch = checkSameSubnetOrIp(clientIp, requiredWifiIp);
   const ipRangePassed = approvedCidrs.length > 0 ? ipRangeCheck(clientIp, approvedCidrs) : false;
 
-  // The student's device IP and MAC address are connected with the Sandlip Oasis network
-  const effectiveIpMatch = isDirectIpMatch || isSubnetMatch || ipRangePassed || (approvedCidrs.length === 0) || true;
+  const effectiveIpMatch = isDirectIpMatch || isSubnetMatch || ipRangePassed || (approvedCidrs.length === 0);
 
-  details.clientIp = clientIp || requiredWifiIp;
+  details.clientIp = clientIp;
   details.targetWifiIp = requiredWifiIp;
   details.ipMatch = effectiveIpMatch;
 
   const wifiSsidName = org?.wifi_ssid || 'The Oasis';
 
-  checks.approvedNetwork = true;
-  checks.ipSubnetMatch = true;
-  checks.wifiIpMatch = true;
-  checks.deviceMacMatch = true;
-  checks.wifiMacMatch = true;
-  details.networkNote = `Connected via "${wifiSsidName}" authorized campus network (Device IP: ${clientIp || requiredWifiIp}, Campus Host: ${requiredWifiIp}, MAC: ${clientMacNorm || requiredWifiMac})`;
+  if (effectiveIpMatch) {
+    checks.approvedNetwork = true;
+    checks.ipSubnetMatch = true;
+    checks.wifiIpMatch = true;
+    details.networkNote = `Connected via "${wifiSsidName}" authorized campus network (IPv4: ${clientIp}, Host: ${requiredWifiIp})`;
+  } else {
+    checks.approvedNetwork = false;
+    checks.wifiIpMatch = false;
+    details.networkNote = `IP ${clientIp} does not match the designated "${wifiSsidName}" WiFi network (${requiredWifiIp}).`;
+    securityAnomalies.push({ type: 'NETWORK_MISMATCH', severity: 'MEDIUM', clientIp, requiredWifiIp });
+
+    if (org?.ip_check_mode === 'strict') {
+      criticalFailures.push(`You must be connected via "${wifiSsidName}" campus WiFi (IPv4: ${requiredWifiIp}, MAC: ${requiredWifiMac}).`);
+    }
+  }
 
   details.wifiVerification = {
     ssid: wifiSsidName,
     requiredMac: requiredWifiMac,
     requiredIp: requiredWifiIp,
     clientMac: deviceMac || device?.mac_address || requiredWifiMac,
-    clientIp: clientIp || requiredWifiIp,
-    macMatched: true,
-    ipMatched: true,
+    clientIp: clientIp,
+    macMatched: checks.deviceMacMatch,
+    ipMatched: checks.wifiIpMatch,
   };
 
   // ── 5. Active attendance session ───────────────────────────────────────────
   let activeSession = null;
-  const now = new Date();
-
-  function checkSessionValidity(s) {
-    if (!s) return false;
-    const statusUpper = String(s.status || '').toUpperCase();
-    if (statusUpper !== 'ACTIVE' && statusUpper !== 'OPEN') return false;
-    if (s.deleted_at || s.closed_at) return false;
-    if (s.ends_at) {
-      const end = new Date(s.ends_at);
-      if (!isNaN(end.getTime()) && (end.getTime() + 60000) <= now.getTime()) return false;
-    }
-    return true;
-  }
-
-  // A. Check if explicit sessionId passed
   if (sessionId) {
-    activeSession = inMemorySessions.find(s => s.id === sessionId) || null;
-    if (!activeSession) {
-      try {
-        const { data: sById } = await supabaseAdmin
-          .from('attendance_sessions')
-          .select('*')
-          .eq('id', sessionId)
-          .maybeSingle();
-        if (sById) activeSession = sById;
-      } catch (_) {}
-    }
-  }
-
-  // B. If not found yet, check inMemorySessions for any active session
-  if (!activeSession) {
-    activeSession = inMemorySessions.find(s => checkSessionValidity(s)) || null;
-  }
-
-  // C. If still not found, query Supabase attendance_sessions with resilient fallback
-  if (!activeSession) {
     try {
-      const { data: qSessions } = await supabaseAdmin
+      const { data: sById } = await supabaseAdmin
         .from('attendance_sessions')
-        .select('*')
-        .or('status.eq.ACTIVE,status.eq.active,status.eq.OPEN,status.eq.open')
-        .order('started_at', { ascending: false })
-        .limit(10);
-      if (qSessions && Array.isArray(qSessions) && qSessions.length > 0) {
-        const match = qSessions.find(s => checkSessionValidity(s));
-        if (match) {
-          activeSession = match;
-          const exists = inMemorySessions.some(m => m.id === match.id);
-          if (!exists) inMemorySessions.unshift(match);
-        }
-      }
-    } catch (err) {
-      console.warn('Session query by status notice:', err.message);
+        .select('id, title, location_id, started_at, ends_at, status, admin_ip, created_by')
+        .eq('id', sessionId)
+        .single();
+      if (sById) activeSession = sById;
+    } catch (_) {}
+    if (!activeSession) {
+      activeSession = inMemorySessions.find(s => s.id === sessionId) || null;
     }
   }
 
-  // D. Fallback check to sessions table in Supabase
   if (!activeSession) {
     try {
-      const { data: altSessions } = await supabaseAdmin
-        .from('sessions')
-        .select('*')
-        .or('status.eq.ACTIVE,status.eq.active')
-        .order('created_at', { ascending: false })
-        .limit(5);
-      if (altSessions && Array.isArray(altSessions)) {
-        const matchAlt = altSessions.find(s => checkSessionValidity(s) && (s.title || s.location_id));
-        if (matchAlt) activeSession = matchAlt;
-      }
+      const { data: qSession } = await supabaseAdmin
+        .from('attendance_sessions')
+        .select('id, title, location_id, started_at, ends_at, status, admin_ip, created_by')
+        .eq('status', 'ACTIVE')
+        .lte('started_at', new Date().toISOString())
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .single();
+      if (qSession) activeSession = qSession;
     } catch (_) {}
+    if (!activeSession) {
+      activeSession = inMemorySessions.find(s => s.status === 'ACTIVE') || null;
+    }
   }
 
   if (activeSession) {
-    if (activeSession.ends_at && new Date(activeSession.ends_at) < now) {
+    if (activeSession.ends_at && new Date(activeSession.ends_at) < new Date()) {
       try {
         await supabaseAdmin
           .from('attendance_sessions')
-          .update({ status: 'EXPIRED', closed_at: now.toISOString() })
+          .update({ status: 'EXPIRED', closed_at: new Date().toISOString() })
           .eq('id', activeSession.id);
       } catch (_) {}
       details.session = null;
-      checks.activeSession = false;
-      criticalFailures.push('Please wait for an admin to open a session before clocking in.');
-      securityAnomalies.push({ type: 'EXPIRED_SESSION_ATTEMPT', severity: 'HIGH' });
     } else {
       checks.activeSession = true;
       details.session = activeSession;
     }
   } else {
     details.session = null;
-    checks.activeSession = false;
-    criticalFailures.push('Please wait for an admin to open a session before clocking in.');
-    securityAnomalies.push({ type: 'NO_ACTIVE_SESSION', severity: 'HIGH' });
   }
 
   // ── 6. GPS & Geofence proximity verification ────────────────────────────────
@@ -600,46 +537,37 @@ async function validateAttendance(params) {
     console.warn('Target location lookup notice:', err.message);
   }
 
-  // Fallback to organization coordinates or default Sandlip Oasis if no location table row exists
+  // Fallback to organization coordinates or default campus beacon if no location table row exists
   if (!targetLocation) {
-    const orgLat = parseFloat(org?.latitude) || OASIS_LATITUDE;
-    const orgLng = parseFloat(org?.longitude) || OASIS_LONGITUDE;
-    const orgRadius = parseInt(org?.attendance_radius_m, 10) || OASIS_GEOFENCE_RADIUS_METERS;
+    const orgLat = parseFloat(org?.latitude) || 8.9280843;
+    const orgLng = parseFloat(org?.longitude) || 11.3307533;
+    const orgRadius = parseInt(org?.attendance_radius_m, 10) || 200;
     targetLocation = {
       id: 'c0000000-0000-0000-0000-000000000001',
-      name: org?.name || 'Sandlip Oasis - Lecture & Hall Complex',
+      name: org?.name || 'Sandlip Oasis Campus',
       latitude: orgLat,
       longitude: orgLng,
       geofence_radius_m: orgRadius,
     };
   }
 
-  // ── GPS accuracy check ──────────────────────────────────────────────────
-  if (accuracy != null && accuracy > OASIS_MAX_GPS_ACCURACY_METERS) {
-    criticalFailures.push('Location accuracy is too low. Please enable Precise Location and try again.');
-    securityAnomalies.push({
-      type: 'LOW_GPS_ACCURACY',
-      severity: 'HIGH',
-      accuracy: Math.round(accuracy),
-      maxAllowed: OASIS_MAX_GPS_ACCURACY_METERS,
-    });
-  }
-
   if (targetLocation && latitude != null && longitude != null) {
     const distanceM = haversineDistanceMeters(latitude, longitude, targetLocation.latitude, targetLocation.longitude);
-    const radiusM = targetLocation.geofence_radius_m || parseInt(org?.attendance_radius_m, 10) || OASIS_GEOFENCE_RADIUS_METERS;
+    const radiusM = Math.max(
+      targetLocation.geofence_radius_m || 50,
+      parseInt(org?.attendance_radius_m, 10) || 50
+    );
 
     // Account for indoor GPS drift and accuracy variance
-    const effectiveDistance = Math.max(0, distanceM - (accuracy ? Math.min(accuracy, 50) : 0));
+    const effectiveDistance = Math.max(0, distanceM - (accuracy ? Math.min(accuracy, 60) : 0));
 
     details.location = {
       id: targetLocation.id,
       name: targetLocation.name,
-      distanceM: Math.round(distanceM * 10) / 10,
-      effectiveDistance: Math.round(effectiveDistance * 10) / 10,
+      distanceM: Math.round(distanceM),
+      effectiveDistance: Math.round(effectiveDistance),
       radiusM,
       gpsAccuracy: accuracy ? Math.round(accuracy) : null,
-      locationVerified: effectiveDistance <= radiusM,
     };
 
     if (effectiveDistance <= radiusM) {
@@ -653,7 +581,7 @@ async function validateAttendance(params) {
         // If student verified presence via dynamic classroom QR or campus network, do not block
         const hasAlternativePhysicalProof = Boolean(locationToken) || Boolean(checks.approvedNetwork && checks.ipSubnetMatch);
         if (!hasAlternativePhysicalProof) {
-          criticalFailures.push(`Location verification failed. You appear to be outside the Sandlip Oasis attendance area (${roundedDist}m away, maximum allowed radius is ${radiusM}m). Please move closer to Sandlip Oasis and try again.`);
+          criticalFailures.push(`You are ${roundedDist}m away from ${targetLocation.name}. You must be within ${radiusM}m.`);
         } else {
           details.geofenceWarning = `GPS placed device ${roundedDist}m away, but verified via classroom QR/network.`;
         }
@@ -760,59 +688,44 @@ async function validateAttendance(params) {
   }
 
   // ── 8. Duplicate attendance check & Single-use QR enforcement ───────────────
-  if (checks.authentication && checks.activeSession) {
+  if (checks.authentication) {
     const today = new Date().toISOString().slice(0, 10);
     const targetSessionId = details.sessionId || activeSession?.id || null;
     const qrNonce = details.qrNonce || null;
 
-    if (attendanceType === 'clock_out') {
-      const { data: existingOut } = await supabaseAdmin
+    // Fast-path in-memory check for duplicate QR nonce or session scan
+    if (qrNonce && hasStudentScannedNonce(studentId, qrNonce)) {
+      checks.duplicate = true;
+      criticalFailures.push('You have already scanned this QR code. Each student can only scan the QR code once.');
+      securityAnomalies.push({ type: 'DUPLICATE_QR_SCAN', severity: 'HIGH' });
+    } else if (targetSessionId && hasStudentAttendedSession(studentId, targetSessionId)) {
+      checks.duplicate = true;
+      const targetLabel = activeSession?.title || 'this session';
+      criticalFailures.push(`You have already recorded attendance for ${targetLabel}. Each student can only scan once per session.`);
+      securityAnomalies.push({ type: 'DUPLICATE_SESSION_ATTENDANCE', severity: 'HIGH' });
+    }
+
+    if (!checks.duplicate) {
+      let dupQuery = supabaseAdmin
         .from('attendance')
-        .select('id, recorded_at')
-        .eq('student_id', studentId)
-        .eq('type', 'clock_out')
-        .gte('recorded_at', today)
-        .limit(1);
+        .select('id, recorded_at, session_id, type')
+        .eq('student_id', studentId);
 
-      if (existingOut && existingOut.length > 0) {
-        checks.duplicate = true;
-        criticalFailures.push('You have already completed attendance and clocked out for today.');
-        securityAnomalies.push({ type: 'DUPLICATE_CLOCK_OUT', severity: 'HIGH' });
-      }
-    } else {
-      // Fast-path in-memory check for duplicate QR nonce or session scan
-      if (qrNonce && hasStudentScannedNonce(studentId, qrNonce)) {
-        checks.duplicate = true;
-        criticalFailures.push('You have already clockin.');
-        securityAnomalies.push({ type: 'DUPLICATE_QR_SCAN', severity: 'HIGH' });
-      } else if (targetSessionId && hasStudentAttendedSession(studentId, targetSessionId)) {
-        checks.duplicate = true;
-        criticalFailures.push('You have already clockin.');
-        securityAnomalies.push({ type: 'DUPLICATE_SESSION_ATTENDANCE', severity: 'HIGH' });
+      if (targetSessionId) {
+        dupQuery = dupQuery.eq('session_id', targetSessionId);
+      } else if (targetLocation) {
+        dupQuery = dupQuery.eq('location_id', targetLocation.id).gte('recorded_at', today);
+      } else {
+        dupQuery = dupQuery.gte('recorded_at', today);
       }
 
-      if (!checks.duplicate) {
-        let dupQuery = supabaseAdmin
-          .from('attendance')
-          .select('id, recorded_at, session_id, type')
-          .eq('student_id', studentId)
-          .eq('type', 'clock_in');
+      const { data: existing } = await dupQuery.limit(5);
 
-        if (targetSessionId) {
-          dupQuery = dupQuery.eq('session_id', targetSessionId);
-        } else if (targetLocation) {
-          dupQuery = dupQuery.eq('location_id', targetLocation.id).gte('recorded_at', today);
-        } else {
-          dupQuery = dupQuery.gte('recorded_at', today);
-        }
-
-        const { data: existing } = await dupQuery.limit(5);
-
-        if (existing && existing.length > 0) {
-          checks.duplicate = true;
-          criticalFailures.push('You have already clockin.');
-          securityAnomalies.push({ type: 'DUPLICATE_ATTENDANCE_ATTEMPT', severity: 'HIGH' });
-        }
+      if (existing && existing.length > 0) {
+        checks.duplicate = true;
+        const targetLabel = activeSession?.title || targetLocation?.name || 'this session';
+        criticalFailures.push(`You have already recorded your attendance for ${targetLabel}. Each student can only scan the QR code once.`);
+        securityAnomalies.push({ type: 'DUPLICATE_ATTENDANCE_ATTEMPT', severity: 'HIGH' });
       }
     }
   }
@@ -871,259 +784,7 @@ async function validateAttendance(params) {
     details,
     targetLocation,
     activeSession: details.session,
-    student,
-    device,
   };
 }
 
-/**
- * Centralized Attendance Validator & Recorder
- * ──────────────────────────────────────────
- * Single service called by BOTH:
- *  1. Manual Clock-In
- *  2. QR Code Clock-In
- *
- * Enforces:
- *  VALID STUDENT + VALID AUTH SESSION + AUTHORIZED DEVICE +
- *  VALID ATTENDANCE SESSION + VALID GPS + INSIDE SANDLIP OASIS GEOFENCE +
- *  NO DUPLICATE + VALID QR WHEN QR METHOD = CLOCK IN ALLOWED.
- */
-async function validateAndRecordAttendance(params) {
-  const {
-    studentId,
-    deviceId,
-    deviceMac,
-    latitude,
-    longitude,
-    accuracy,
-    locationId,
-    locationToken,
-    sessionId,
-    attendanceType = 'clock_in',
-    clockInMethod = 'LOGIN', // 'LOGIN' | 'QR'
-    clientIp = '192.168.1.156',
-    userAgent = 'Oasis Student PWA',
-    devicePlatform = 'web',
-  } = params;
-
-  // 1. Run centralized validation engine
-  const result = await validateAttendance({
-    studentId,
-    deviceId,
-    deviceMac,
-    latitude,
-    longitude,
-    accuracy,
-    locationId,
-    locationToken,
-    sessionId,
-    clientIp,
-    attendanceType,
-  });
-
-  const studentUuid = result.student?.id || studentId;
-  const distanceMeters = result.details?.location?.distanceM != null ? result.details.location.distanceM : null;
-
-  // 2. If critical failure or rejected
-  if (!result.approved) {
-    const primaryError = result.criticalFailures[0] || 'Attendance verification failed.';
-    let eventType = 'CLOCK_IN_DENIED';
-    if (result.securityAnomalies.some(a => a.type === 'OUTSIDE_GEOFENCE')) eventType = 'OUTSIDE_GEOFENCE';
-    else if (result.securityAnomalies.some(a => a.type === 'LOW_GPS_ACCURACY')) eventType = 'LOW_GPS_ACCURACY';
-    else if (result.securityAnomalies.some(a => a.type === 'DUPLICATE_ATTENDANCE_ATTEMPT' || a.type === 'DUPLICATE_QR_SCAN')) eventType = 'DUPLICATE_ATTENDANCE';
-    else if (result.securityAnomalies.some(a => a.type === 'REVOKED_DEVICE_ATTEMPT' || a.type === 'PENDING_DEVICE_ATTEMPT' || a.type === 'DEVICE_UNBOUND')) eventType = 'UNAUTHORIZED_DEVICE';
-    else if (result.securityAnomalies.some(a => a.type === 'STALE_QR_SCANNED' || a.type === 'INVALID_QR_SCANNED')) eventType = 'INVALID_QR';
-
-    // Log denial to audit_log
-    try {
-      await supabaseAdmin.from('audit_log').insert({
-        student_id: studentUuid,
-        device_id: deviceId || result.device?.id || null,
-        session_id: result.activeSession?.id || null,
-        attendance_session_id: result.activeSession?.id || null,
-        method: clockInMethod,
-        event: eventType,
-        result: 'DENIED',
-        reason: primaryError,
-        ip_address: clientIp,
-        user_agent: userAgent,
-        latitude,
-        longitude,
-        gps_accuracy: accuracy,
-        distance_meters: distanceMeters,
-        detail: {
-          status: result.status,
-          riskScore: result.riskScore,
-          criticalFailures: result.criticalFailures,
-          securityAnomalies: result.securityAnomalies,
-          checks: result.checks,
-          clockInMethod,
-        },
-      });
-    } catch (auditErr) {
-      console.warn('Audit log denial notice:', auditErr.message);
-    }
-
-    const isNoSession = !result.checks.activeSession || result.criticalFailures.some(f => f.toLowerCase().includes('session') || f.toLowerCase().includes('open a session'));
-    const isDuplicate = !isNoSession && (result.checks.duplicate || result.criticalFailures.some(f => f.includes('already')));
-
-    return {
-      success: false,
-      approved: false,
-      statusCode: isNoSession ? 403 : (isDuplicate ? 409 : 403),
-      error: primaryError,
-      status: result.status,
-      riskScore: result.riskScore,
-      checks: result.checks,
-      details: result.details,
-      criticalFailures: result.criticalFailures,
-      noSessionCreated: isNoSession,
-      code: isNoSession ? 'NO_SESSION_CREATED' : (isDuplicate ? 'DUPLICATE' : 'ATTENDANCE_DENIED'),
-    };
-  }
-
-  // 3. Approved: Insert attendance row with full telemetry
-  const targetSessionId = sessionId || result.activeSession?.id || null;
-  const qrNonce = result.details?.qrNonce || null;
-
-  const insertData = {
-    student_id: studentUuid,
-    location_id: result.targetLocation?.id || null,
-    type: attendanceType,
-    recorded_at: new Date().toISOString(),
-    latitude,
-    longitude,
-    device_id: result.device?.id || null,
-    session_id: targetSessionId,
-    risk_score: result.riskScore,
-    verification_status: result.status,
-    punctuality: result.punctuality || (result.isLate ? 'LATE' : 'EARLY'),
-    is_late: result.isLate || false,
-    ip_address: clientIp,
-    gps_accuracy: accuracy || null,
-    clock_in_method: clockInMethod,
-    distance_meters: distanceMeters,
-    location_verified: result.checks.insideGeofence || true,
-    user_agent: userAgent || null,
-    device_platform: devicePlatform || null,
-    qr_token_id: qrNonce,
-    qr_session_id: targetSessionId,
-    server_timestamp: new Date().toISOString(),
-  };
-
-  const { data: row, error: insertErr } = await supabaseAdmin
-    .from('attendance')
-    .insert(insertData)
-    .select()
-    .single();
-
-  if (insertErr) {
-    if (insertErr.code === '23505') {
-      return {
-        success: false,
-        approved: false,
-        statusCode: 409,
-        error: 'You have already clocked in for this attendance session.',
-        status: 'DUPLICATE',
-        riskScore: result.riskScore,
-      };
-    }
-    console.error('Attendance insert error:', insertErr);
-    return {
-      success: false,
-      approved: false,
-      statusCode: 500,
-      error: 'Could not record attendance in database.',
-    };
-  }
-
-  // 4. Register single-use QR scan in memory registry
-  registerStudentScanned(studentUuid, targetSessionId, qrNonce);
-
-  // 5. Write success audit log
-  try {
-    await supabaseAdmin.from('audit_log').insert({
-      student_id: studentUuid,
-      device_id: result.device?.id || null,
-      session_id: targetSessionId,
-      attendance_session_id: targetSessionId,
-      method: clockInMethod,
-      event: 'CLOCK_IN_SUCCESS',
-      result: 'SUCCESS',
-      reason: 'All security verification checks passed.',
-      ip_address: clientIp,
-      user_agent: userAgent,
-      latitude,
-      longitude,
-      gps_accuracy: accuracy,
-      distance_meters: distanceMeters,
-      detail: {
-        status: result.status,
-        riskScore: result.riskScore,
-        punctuality: result.punctuality,
-        clockInMethod,
-      },
-    });
-  } catch (auditErr) {
-    console.warn('Audit log write notice:', auditErr.message);
-  }
-
-  // 6. Broadcast Realtime events
-  const studentPayload = {
-    id: result.student?.id || studentUuid,
-    full_name: result.student?.full_name || 'Student',
-    student_id: result.student?.student_id || studentId,
-    email: result.student?.email || '',
-  };
-
-  eventBus.emit('attendance_recorded', {
-    sessionId: targetSessionId,
-    record: {
-      ...row,
-      students: studentPayload,
-    },
-  });
-
-  eventBus.emit('realtime_event', {
-    eventType: 'INSERT',
-    table: 'attendance',
-    action: 'INSERT',
-    record: {
-      ...row,
-      students: studentPayload,
-      locations: { name: result.targetLocation?.name || 'Sandlip Oasis - Lecture & Hall Complex' },
-    },
-  });
-
-  return {
-    success: true,
-    approved: true,
-    status: 'VERIFIED',
-    statusCode: 200,
-    message: attendanceType === 'clock_out' ? 'Clocked out successfully.' : 'Clock-in successful.',
-    attendance: {
-      id: row.id,
-      student_id: studentPayload.student_id,
-      student_name: studentPayload.full_name,
-      clock_in_method: clockInMethod,
-      verified_at: row.recorded_at,
-      location_verified: true,
-      distance_meters: distanceMeters,
-      gps_accuracy: accuracy,
-      punctuality: row.punctuality,
-      is_late: row.is_late,
-      location_id: row.location_id,
-      location_name: result.targetLocation?.name || 'Sandlip Oasis - Lecture & Hall Complex',
-      ip_address: clientIp,
-      verification_status: row.verification_status,
-      session_id: targetSessionId,
-      device_id: deviceId || result.device?.id,
-    },
-    checks: result.checks,
-    details: result.details,
-    riskScore: result.riskScore,
-    student: studentPayload,
-  };
-}
-
-module.exports = { validateAttendance, validateAndRecordAttendance, registerStudentScanned, hasStudentAttendedSession, scannedStudentSessions };
+module.exports = { validateAttendance, registerStudentScanned };

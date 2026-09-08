@@ -44,33 +44,8 @@ router.get('/stream', (req, res) => {
     } catch (_) {}
   };
 
-  const onSessionStarted = (sess) => {
-    try {
-      res.write(`event: session\ndata: ${JSON.stringify({ active: true, session: sess })}\n\n`);
-      res.write(`event: realtime\ndata: ${JSON.stringify({ table: 'attendance_sessions', action: 'INSERT', eventType: 'INSERT', record: sess })}\n\n`);
-    } catch (_) {}
-  };
-
-  const onSessionClosed = (sess) => {
-    try {
-      res.write(`event: session\ndata: ${JSON.stringify({ active: false, session: sess })}\n\n`);
-      res.write(`event: realtime\ndata: ${JSON.stringify({ table: 'attendance_sessions', action: 'UPDATE', eventType: 'UPDATE', record: sess })}\n\n`);
-    } catch (_) {}
-  };
-
-  const onSessionDeleted = (data) => {
-    try {
-      res.write(`event: session\ndata: ${JSON.stringify({ active: false, deletedId: data.id })}\n\n`);
-      res.write(`event: realtime\ndata: ${JSON.stringify({ table: 'attendance_sessions', action: 'DELETE', eventType: 'DELETE', record: data })}\n\n`);
-      res.write(`event: realtime\ndata: ${JSON.stringify({ table: 'sessions', action: 'DELETE', eventType: 'DELETE', record: data })}\n\n`);
-    } catch (_) {}
-  };
-
   eventBus.on('realtime_event', onRealtimeEvent);
   eventBus.on('attendance_recorded', onAttendanceRecorded);
-  eventBus.on('session_started', onSessionStarted);
-  eventBus.on('session_closed', onSessionClosed);
-  eventBus.on('session_deleted', onSessionDeleted);
 
   const heartbeat = setInterval(() => {
     try {
@@ -80,13 +55,20 @@ router.get('/stream', (req, res) => {
     }
   }, 12000);
 
+  // Graceful serverless cycling: close cleanly after 50 seconds before Vercel lambda limits.
+  // Standard EventSource automatically reconnects cleanly with zero errors.
+  const serverlessTimeout = setTimeout(() => {
+    try {
+      res.write(`event: reconnect\ndata: ${JSON.stringify({ reason: 'cycle' })}\n\n`);
+      res.end();
+    } catch (_) {}
+  }, 50000);
+
   req.on('close', () => {
     clearInterval(heartbeat);
+    clearTimeout(serverlessTimeout);
     eventBus.removeListener('realtime_event', onRealtimeEvent);
     eventBus.removeListener('attendance_recorded', onAttendanceRecorded);
-    eventBus.removeListener('session_started', onSessionStarted);
-    eventBus.removeListener('session_closed', onSessionClosed);
-    eventBus.removeListener('session_deleted', onSessionDeleted);
   });
 });
 
@@ -231,8 +213,6 @@ router.delete('/locations/:id', async (req, res) => {
 router.post('/locations/:id/generate-qr', async (req, res) => {
   const locationId = req.params.id;
   const adminIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '127.0.0.1';
-  const autoRotate = req.body?.auto_rotate !== false;
-  const ttlSeconds = autoRotate ? parseInt(process.env.QR_TOKEN_TTL_SECONDS || '25', 10) : 86400;
 
   // Verify location exists
   let location = null;
@@ -272,7 +252,6 @@ router.post('/locations/:id/generate-qr', async (req, res) => {
     nonce,
     adminId: req.user?.sub,
     adminIp,
-    ttlSeconds,
   });
   const forwardedProto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
   const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host;
@@ -295,8 +274,7 @@ router.post('/locations/:id/generate-qr', async (req, res) => {
     location_name: location.name,
     nonce,
     admin_ip: adminIp,
-    auto_rotate: autoRotate,
-    expires_in_seconds: ttlSeconds,
+    expires_in_seconds: parseInt(process.env.QR_TOKEN_TTL_SECONDS || '25', 10),
   });
 });
 
@@ -304,7 +282,6 @@ router.post('/locations/:id/generate-qr', async (req, res) => {
 router.post('/sessions/:id/generate-qr', async (req, res) => {
   const sessionId = req.params.id;
   const adminIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '127.0.0.1';
-  const autoRotate = req.body?.auto_rotate !== false;
 
   const session = await findSession(sessionId);
   if (!session) {
@@ -312,7 +289,7 @@ router.post('/sessions/:id/generate-qr', async (req, res) => {
   }
 
   try {
-    const payload = await generateSessionQrPayload(session, adminIp, req.user?.sub, { autoRotate });
+    const payload = await generateSessionQrPayload(session, adminIp, req.user?.sub);
     res.json(payload);
   } catch (err) {
     console.error('Session QR generation error:', err);
@@ -662,7 +639,7 @@ router.get('/attendance/export', async (req, res) => {
       `"${r.students?.student_id || ''}"`,
       `"${r.locations?.name || ''}"`,
       r.type || 'clock_in',
-      r.punctuality || (r.is_late ? 'LATE' : 'EARLY'),
+      r.punctuality || 'EARLY',
       r.device_mac || '—',
       r.ip_address || '—',
       r.verification_status || 'VERIFIED',

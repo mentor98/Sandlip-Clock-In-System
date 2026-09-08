@@ -31,8 +31,7 @@
       stats.pendingDevices = (devicesRes.devices || []).filter(d => d.status === 'PENDING').length;
 
       const today = new Date().toISOString().slice(0, 10);
-      const allAttendance = attendanceRes.attendance || [];
-      const todayRecords = allAttendance.filter(r => r.recorded_at?.startsWith(today));
+      const todayRecords = (attendanceRes.attendance || []).filter(r => r.recorded_at?.startsWith(today));
       stats.presentToday = new Set(todayRecords.filter(r => r.type === 'clock_in').map(r => r.student_id)).size;
 
       const auditRes = await api('/admin/audit-log').catch(() => ({ audit_log: [] }));
@@ -40,7 +39,7 @@
       stats.rejectedToday = todayAudit.filter(e => e.event_type === 'attendance_rejected' && e.detail?.status === 'REJECTED').length;
       stats.reviewToday = todayAudit.filter(e => e.event_type === 'attendance_rejected' && e.detail?.status === 'REVIEW').length;
 
-      recentAttendance = (todayRecords.length > 0 ? todayRecords : allAttendance).slice(0, 10);
+      recentAttendance = todayRecords.slice(0, 10);
 
       const activeSessions = (sessionRes.sessions || [])
         .filter(s => s.status === 'ACTIVE')
@@ -54,10 +53,9 @@
   const unsub2 = subscribeTable('devices', '*', debouncedLoad);
   const unsub3 = subscribeTable('students', '*', debouncedLoad);
   const unsub4 = subscribeTable('sessions', '*', debouncedLoad);
-  const unsub5 = subscribeTable('attendance_sessions', '*', debouncedLoad);
   onDestroy(() => {
     clearTimeout(loadTimer);
-    unsub1(); unsub2(); unsub3(); unsub4(); unsub5();
+    unsub1(); unsub2(); unsub3(); unsub4();
   });
 
   function statusColor(s) {
@@ -206,14 +204,10 @@
                   </span>
                 </td>
                 <td>
-                  {#if r.type === 'clock_in'}
-                    {#if r.punctuality === 'LATE' || r.is_late}
-                      <span class="punct-chip punct-late">LATE</span>
-                    {:else if r.punctuality === 'WARNING'}
-                      <span class="punct-chip punct-warning">WARNING</span>
-                    {:else}
-                      <span class="punct-chip punct-early">EARLY</span>
-                    {/if}
+                  {#if r.type === 'clock_in' && r.punctuality}
+                    <span class="punct-chip punct-{r.punctuality.toLowerCase()}">{r.punctuality}</span>
+                  {:else if r.type === 'clock_in'}
+                    <span class="punct-chip punct-towards">RECORDED</span>
                   {:else}
                     <span class="muted">—</span>
                   {/if}
@@ -342,34 +336,21 @@
 
   .table-container {
     overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+    -webkit-overflow-scrolling: touch;
     width: 100%;
-  }
-  .table-container::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
   }
   table {
     width: 100%;
+    min-width: 620px;
     border-collapse: collapse;
-    font-size: 12px;
-    table-layout: auto;
+    font-size: 13.5px;
   }
   th {
-    background: #f8fafc; text-align: left; padding: 8px 10px;
-    color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase;
-    letter-spacing: 0.03em; border-bottom: 1px solid #e2e8f0;
-    white-space: nowrap;
+    background: #f8fafc; text-align: left; padding: 12px 20px;
+    color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
   }
-  td {
-    padding: 7px 10px;
-    border-bottom: 1px solid #f1f5f9;
-    color: #334155;
-    white-space: nowrap;
-    font-size: 12px;
-  }
+  td { padding: 14px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
 
@@ -391,7 +372,6 @@
     font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
   }
   .punct-early { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
-  .punct-warning { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
   .punct-towards { background: #e0f2fe; color: #0284c7; border: 1px solid #7dd3fc; }
   .punct-late { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
 

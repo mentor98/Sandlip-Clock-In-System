@@ -8,10 +8,8 @@
 <meta property="og:title" content="Oasis ClockIn" />
 <meta property="og:description" content="Secure student attendance tracking system with passkey / WebAuthn authentication, geofencing, QR verification, absence marking, and administrative controls." />
 <link rel="manifest" href="manifest.json" />
-<link rel="icon" type="image/png" href="https://res.cloudinary.com/jinrrp4r/image/upload/v1788533236/favicon_mocqqz.png" />
-<link rel="apple-touch-icon" href="https://res.cloudinary.com/jinrrp4r/image/upload/v1788533236/favicon_mocqqz.png" />
 <meta name="theme-color" content="#0f766e" />
-<link rel="stylesheet" href="style.css?v=10.0" />
+<link rel="stylesheet" href="style.css?v=2.3" />
 </head>
 <body>
 
@@ -20,29 +18,29 @@
     <!-- Centered Inputs & Direct Clock In -->
     <section class="panel panel-center">
       <div class="form-wrap">
-        <div class="brand-center-header">
-          <div class="brand-logo-wrap center-logo">
-            <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="ClockIn Logo" class="brand-logo-img" />
+        <div class="brand-sub-header">
+          <div class="brand-header-left">
+            <div class="brand-icon small">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div>
+              <span class="brand-title small">Oasis ClockIn</span>
+              <span class="brand-sub">Student Attendance Portal</span>
+            </div>
           </div>
-          <div class="brand-sub-portal">Student Attendance Portal</div>
-          <p class="form-sub-hint">Enter your student ID to clock in directly</p>
+          <div id="front-server-pill" class="server-status-pill" title="Network Connection Status">
+            <span class="server-status-dot online" id="front-server-dot"></span>
+            <span id="server-status-label">Online</span>
+          </div>
         </div>
+
+        <h2>Student Clock In</h2>
+        <p class="form-sub">Enter your student / matric ID to clock in directly</p>
         
         <!-- Live GPS Proximity Line -->
         <div class="front-loc-pill">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
           <span id="front-location-status">Detecting GPS proximity…</span>
-        </div>
-
-        <!-- Session Status Banner (hidden by default; shown if session is active or when student tries to clock in) -->
-        <div id="front-session-banner" class="front-session-card session-none" style="display: none;">
-          <div class="front-session-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          </div>
-          <div class="front-session-info">
-            <div id="front-session-title" class="front-session-title">Session Info</div>
-            <div id="front-session-desc" class="front-session-desc"></div>
-          </div>
         </div>
 
         <!-- Optional Attached QR Badge -->
@@ -72,14 +70,14 @@
           </button>
         </div>
 
-        <!-- Dynamic Error & Alert Box -->
+        <!-- Dynamic Error & First-Time Helper Alert Box -->
         <div id="signin-alert-box" class="first-time-prompt" style="display: none;">
           <div class="prompt-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           </div>
           <div class="prompt-body">
-            <p id="signin-error-text" class="prompt-msg"></p>
-            <button id="btn-prompt-register" class="btn-prompt-action" style="display: none;">
+            <p id="signin-error-text" class="prompt-msg">First time here? Register to get your Student ID</p>
+            <button id="btn-prompt-register" class="btn-prompt-action">
               <span>Register &amp; Get Student ID</span>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
@@ -90,6 +88,13 @@
           <span>First time coming?</span>
           <button id="btn-goto-register" class="btn-link-inline">Register to get your ID &amp; Clock In</button>
         </div>
+        
+        <div class="portal-switch-box">
+          <a href="/admin/" class="portal-switch-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Switch to Admin Dashboard</span>
+          </a>
+        </div>
       </div>
     </section>
   </main>
@@ -99,13 +104,18 @@
     <!-- Centered Registration & ID Generation -->
     <section class="panel panel-center">
       <div class="form-wrap">
-        <div class="brand-center-header">
-          <div class="brand-logo-wrap center-logo">
-            <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="ClockIn Logo" class="brand-logo-img" />
+        <div class="brand-sub-header">
+          <div class="brand-icon small">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
-          <h2 class="center-title">Register &amp; Get Student ID</h2>
-          <div class="brand-sub-reg">First-Time Student Registration</div>
+          <div>
+            <span class="brand-title small">Oasis ClockIn</span>
+            <span class="brand-sub">First-Time Student Registration</span>
+          </div>
         </div>
+
+        <h2>Register &amp; Get Student ID</h2>
+        <p class="form-sub">Provide your details to receive your Student ID and clock in</p>
 
         <label for="reg-name">Full Name</label>
         <div class="input-wrap">
@@ -119,20 +129,16 @@
           <input id="reg-email" type="email" placeholder="jane@oasis.edu" autocomplete="email" />
         </div>
 
-        <div class="label-row-between">
-          <label for="reg-sid">Assigned Student ID</label>
-          <span class="badge-auto-gen" id="badge-auto-status">Auto-Generated</span>
-        </div>
-        <div class="input-wrap has-action-btn">
-          <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <input id="reg-sid" type="text" placeholder="Generating next ID..." readonly class="input-auto-id" />
-          <button type="button" id="btn-refresh-sid" class="input-action-btn" title="Refresh sequence ID">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        <div class="sid-label-row">
+          <label for="reg-sid" style="margin:0">Assigned Student ID</label>
+          <button id="btn-suggest-id" class="btn-micro" type="button">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            <span>Auto-Generate</span>
           </button>
         </div>
-        <div class="id-generation-hint" id="reg-sid-hint">
-          <span class="id-pulse-dot"></span>
-          <span id="reg-sid-hint-text">Auto-generating next student ID...</span>
+        <div class="input-wrap" style="margin-top: 6px;">
+          <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <input id="reg-sid" type="text" placeholder="SAN-2026-017" />
         </div>
 
         <button id="btn-register" class="btn-primary">
@@ -157,12 +163,20 @@
       <!-- Top Navigation Bar -->
       <header class="topbar">
         <div class="topbar-brand">
-          <div class="brand-logo-wrap small">
-            <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="Oasis ClockIn Logo" class="brand-logo-img" />
+          <div class="brand-icon small">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div>
+            <span class="brand-title small">Oasis ClockIn</span>
+            <span id="header-student-tag" class="student-tag">Student</span>
           </div>
         </div>
 
         <div class="topbar-actions">
+          <div id="home-server-pill" class="server-status-pill" title="Network Connection Status">
+            <span class="server-status-dot online" id="home-server-dot"></span>
+            <span id="home-server-label">Online</span>
+          </div>
           <button id="btn-scan" class="icon-btn" title="Scan QR Code">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             <span>Scan QR</span>
@@ -187,9 +201,6 @@
       <!-- Clock In Card -->
       <div class="clock-card">
         <p id="home-greeting" class="greeting">Hi there</p>
-        <div id="home-student-id-wrap" class="home-student-id-wrap">
-          <span id="home-student-id" class="home-student-id-badge"></span>
-        </div>
         <div class="status-wrap">
           <span id="home-status" class="status-pill status-out">Not Clocked In</span>
         </div>
@@ -227,43 +238,6 @@
           </div>
           <p id="verify-message" class="v-msg"></p>
           <div id="verify-checks" class="v-checks"></div>
-        </div>
-
-        <!-- Live Hardware & Telemetry Status -->
-        <div class="telemetry-box" id="telemetry-box">
-          <div class="telemetry-header">
-            <div class="telemetry-title-group">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              <span class="telemetry-title">Device &amp; Campus Telemetry</span>
-            </div>
-            <span class="telemetry-badge" id="telemetry-badge">SECURE</span>
-          </div>
-          <div class="telemetry-grid">
-            <div class="telemetry-item">
-              <span class="telemetry-label">Device ID</span>
-              <span class="telemetry-val" id="tel-device-id">--</span>
-            </div>
-            <div class="telemetry-item">
-              <span class="telemetry-label">Device Name</span>
-              <span class="telemetry-val" id="tel-device-name">--</span>
-            </div>
-            <div class="telemetry-item">
-              <span class="telemetry-label">Network / IP</span>
-              <span class="telemetry-val" id="tel-network-ip">192.168.1.156</span>
-            </div>
-            <div class="telemetry-item">
-              <span class="telemetry-label">Hardware MAC</span>
-              <span class="telemetry-val" id="tel-mac">BE:64:B4:14:4D:67</span>
-            </div>
-            <div class="telemetry-item">
-              <span class="telemetry-label">Live Coordinates</span>
-              <span class="telemetry-val" id="tel-coords">8.92811° N, 11.33090° E</span>
-            </div>
-            <div class="telemetry-item">
-              <span class="telemetry-label">Campus Distance</span>
-              <span class="telemetry-val text-success" id="tel-distance">0 m (Inside Perimeter)</span>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -431,7 +405,7 @@
         </div>
         <div class="detail-row">
           <span class="detail-label">Punctuality</span>
-          <span class="detail-val" id="modal-success-punctuality"><span class="punct-pill punct-early">Early</span></span>
+          <span class="detail-val" id="modal-success-punctuality"><span class="punct-pill punct-on_time">On Time</span></span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Recorded Time</span>
@@ -461,6 +435,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-  <script src="app.js?v=10.0"></script>
+  <script src="app.js?v=2.4"></script>
 </body>
 </html>

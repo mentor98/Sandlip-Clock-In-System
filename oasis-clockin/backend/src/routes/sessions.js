@@ -27,145 +27,9 @@ const eventBus = require('../utils/eventBus');
 
 // ── Public / Live Projector Endpoints ─────────────────────────────────────────
 
-// Helper to check if a session record is currently active
-function isSessionActive(s, now = new Date()) {
-  if (!s) return false;
-  const statusUpper = String(s.status || '').toUpperCase();
-  if (statusUpper !== 'ACTIVE' && statusUpper !== 'OPEN') return false;
-  if (s.deleted_at || s.closed_at) return false;
-  if (s.ends_at) {
-    const end = new Date(s.ends_at);
-    // Allow a 15-minute clock drift margin so slight clock differences and timezone variances do not prematurely close the session
-    if (!isNaN(end.getTime()) && (end.getTime() + 900000) <= now.getTime()) return false;
-  }
-  return true;
-}
-
-// Resilient active session lookup helper
-async function getActiveSession(now = new Date()) {
-  let activeSession = inMemorySessions.find((s) => isSessionActive(s, now)) || null;
-
-  if (!activeSession) {
-    try {
-      let queryRes = await supabaseAdmin
-        .from('attendance_sessions')
-        .select('*, locations(name)')
-        .or('status.eq.ACTIVE,status.eq.active,status.eq.OPEN,status.eq.open')
-        .order('started_at', { ascending: false })
-        .limit(10);
-
-      if (queryRes.error || !queryRes.data) {
-        queryRes = await supabaseAdmin
-          .from('attendance_sessions')
-          .select('*')
-          .or('status.eq.ACTIVE,status.eq.active,status.eq.OPEN,status.eq.open')
-          .order('started_at', { ascending: false })
-          .limit(10);
-      }
-
-      if (queryRes.data && Array.isArray(queryRes.data) && queryRes.data.length > 0) {
-        const match = queryRes.data.find((s) => isSessionActive(s, now));
-        if (match) {
-          activeSession = match;
-          const existsInMem = inMemorySessions.some(m => m.id === match.id);
-          if (!existsInMem) inMemorySessions.unshift(match);
-        }
-      }
-    } catch (err) {
-      console.warn('Active session Supabase lookup notice:', err.message);
-    }
-  }
-
-  if (activeSession && !activeSession.locations) {
-    activeSession.locations = { name: 'Sandlip Oasis - Lecture & Hall Complex' };
-  }
-
-  return activeSession;
-}
-
-// GET /api/sessions/active/stream — Public Real-time Server-Sent Events stream for Student PWA & live status
-const handleActiveSessionStream = async (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  if (typeof res.flushHeaders === 'function') {
-    res.flushHeaders();
-  }
-
-  const sendSessionState = async () => {
-    try {
-      const session = await getActiveSession();
-      const payload = JSON.stringify({ session, active: Boolean(session) });
-      res.write(`event: session\ndata: ${payload}\n\n`);
-      res.write(`data: ${payload}\n\n`);
-      if (typeof res.flush === 'function') res.flush();
-    } catch (_) {}
-  };
-
-  // Immediate push upon connection
-  await sendSessionState();
-
-  const onSessionChanged = () => {
-    sendSessionState();
-  };
-
-  const onAttendance = (eventData) => {
-    try {
-      if (!eventData) return;
-      const rec = eventData.record || eventData;
-      res.write(`event: attendance\ndata: ${JSON.stringify(rec)}\n\n`);
-      if (typeof res.flush === 'function') res.flush();
-    } catch (_) {}
-  };
-
-  const onRealtime = (payload) => {
-    if (!payload) return;
-    const t = String(payload.table || '').toLowerCase();
-    if (t === 'attendance_sessions' || t === 'sessions') {
-      sendSessionState();
-    } else if (t === 'attendance') {
-      try {
-        res.write(`event: attendance\ndata: ${JSON.stringify(payload.record || payload)}\n\n`);
-        if (typeof res.flush === 'function') res.flush();
-      } catch (_) {}
-    }
-  };
-
-  eventBus.on('session_started', onSessionChanged);
-  eventBus.on('session_closed', onSessionChanged);
-  eventBus.on('session_deleted', onSessionChanged);
-  eventBus.on('realtime_event', onRealtime);
-  eventBus.on('attendance_recorded', onAttendance);
-
-  const heartbeat = setInterval(() => {
-    try {
-      res.write(': heartbeat\n\n');
-      if (typeof res.flush === 'function') res.flush();
-    } catch {
-      clearInterval(heartbeat);
-    }
-  }, 12000);
-
-  req.on('close', () => {
-    clearInterval(heartbeat);
-    eventBus.removeListener('session_started', onSessionChanged);
-    eventBus.removeListener('session_closed', onSessionChanged);
-    eventBus.removeListener('session_deleted', onSessionChanged);
-    eventBus.removeListener('realtime_event', onRealtime);
-    eventBus.removeListener('attendance_recorded', onAttendance);
-  });
-};
-
-router.get('/active/stream', handleActiveSessionStream);
-router.get('/active-stream', handleActiveSessionStream);
-
 // GET /api/sessions/:id/stream — Real-time Server-Sent Events stream for live session attendance
 router.get('/:id/stream', (req, res) => {
   const sessionId = req.params.id;
-  if (sessionId === 'active') {
-    return handleActiveSessionStream(req, res);
-  }
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -205,29 +69,42 @@ router.get('/:id/stream', (req, res) => {
     }
   }, 15000);
 
+  // Graceful serverless cycling: close cleanly after 50 seconds before Vercel lambda limits
+  const serverlessTimeout = setTimeout(() => {
+    try {
+      res.write(`event: reconnect\ndata: ${JSON.stringify({ reason: 'cycle' })}\n\n`);
+      res.end();
+    } catch (_) {}
+  }, 50000);
+
   req.on('close', () => {
     clearInterval(heartbeat);
+    clearTimeout(serverlessTimeout);
     eventBus.removeListener('attendance_recorded', onAttendance);
   });
 });
 
-// GET /api/sessions/active — public status check for students to know if a session is open
-router.get('/active', async (_req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+// GET /api/sessions/active — student polls this to know if a session is open
+router.get('/active', requireAuth, async (_req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('attendance_sessions')
+      .select('id, title, location_id, locations(name), started_at, ends_at, status')
+      .eq('status', 'ACTIVE')
+      .lte('started_at', new Date().toISOString())
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .single();
 
-  const activeSession = await getActiveSession();
-
-  if (activeSession) {
-    return res.json({ session: activeSession, active: true });
+    if (!error && data) {
+      return res.json({ session: data });
+    }
+  } catch (err) {
+    console.warn('Active session query notice:', err.message);
   }
 
-  return res.json({
-    session: null,
-    active: false,
-    message: 'Please wait for an administrator to open a session before clocking in.',
-  });
+  const active = inMemorySessions.find((s) => s.status === 'ACTIVE') || null;
+  res.json({ session: active });
 });
 
 // ── Admin only below ──────────────────────────────────────────────────────────
@@ -236,20 +113,15 @@ router.use(requireAuth, requireAdmin);
 
 // GET /api/sessions — list all sessions
 router.get('/', async (_req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
   try {
     const { data, error } = await supabaseAdmin
       .from('attendance_sessions')
       .select('*, locations(name)')
-      .neq('status', 'DELETED')
       .order('created_at', { ascending: false })
       .limit(100);
 
-    if (!error && Array.isArray(data)) {
-      const activeOrClosed = data.filter((s) => s.status !== 'DELETED' && !s.deleted_at);
-      return res.json({ sessions: activeOrClosed });
+    if (!error && data && data.length > 0) {
+      return res.json({ sessions: data });
     }
 
     if (error) {
@@ -257,26 +129,23 @@ router.get('/', async (_req, res) => {
       const { data: rawData, error: err2 } = await supabaseAdmin
         .from('attendance_sessions')
         .select('*')
-        .neq('status', 'DELETED')
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (!err2 && Array.isArray(rawData)) {
-        const activeOrClosed = rawData
-          .filter((s) => s.status !== 'DELETED' && !s.deleted_at)
-          .map((s) => ({
+      if (!err2 && rawData && rawData.length > 0) {
+        return res.json({
+          sessions: rawData.map((s) => ({
             ...s,
             locations: s.locations || { name: 'Sandlip Oasis Campus' },
-          }));
-        return res.json({ sessions: activeOrClosed });
+          })),
+        });
       }
     }
   } catch (err) {
     console.warn('Load sessions query exception:', err.message);
   }
 
-  const validInMem = inMemorySessions.filter((s) => s.status !== 'DELETED' && !s.deleted_at);
-  res.json({ sessions: validInMem });
+  res.json({ sessions: inMemorySessions });
 });
 
 // POST /api/sessions — create and immediately start a session
@@ -374,25 +243,7 @@ router.post('/', async (req, res) => {
   }
 
   const resultSession = savedSession || fallbackSession;
-  if (!resultSession.locations) {
-    resultSession.locations = { name: locName };
-  }
   inMemorySessions.unshift(resultSession);
-
-  // Broadcast realtime events to all connected clients (Admin Dashboard & Student PWA)
-  eventBus.emit('session_started', resultSession);
-  eventBus.emit('realtime_event', {
-    eventType: 'INSERT',
-    action: 'INSERT',
-    table: 'attendance_sessions',
-    record: resultSession,
-  });
-  eventBus.emit('realtime_event', {
-    eventType: 'INSERT',
-    action: 'INSERT',
-    table: 'sessions',
-    record: resultSession,
-  });
 
   try {
     await supabaseAdmin.from('audit_log').insert({
@@ -413,7 +264,6 @@ router.post('/:id/generate-qr', async (req, res) => {
     req.ip ||
     req.socket?.remoteAddress ||
     '127.0.0.1';
-  const autoRotate = req.body?.auto_rotate !== false;
 
   const session = await findSession(sessionId);
   if (!session) {
@@ -421,7 +271,7 @@ router.post('/:id/generate-qr', async (req, res) => {
   }
 
   try {
-    const payload = await generateSessionQrPayload(session, adminIp, req.user?.sub, { autoRotate });
+    const payload = await generateSessionQrPayload(session, adminIp, req.user?.sub);
     res.json(payload);
   } catch (err) {
     console.error('Session QR generation error:', err);
@@ -454,80 +304,22 @@ router.patch('/:id/close', async (req, res) => {
     if (!closedSession) closedSession = inMem;
   }
 
-  const finalClosed = closedSession || { id: sessionId, status: 'CLOSED', closed_at: new Date().toISOString() };
-
-  // Broadcast realtime event to all connected clients
-  eventBus.emit('session_closed', finalClosed);
-  eventBus.emit('realtime_event', {
-    eventType: 'UPDATE',
-    action: 'UPDATE',
-    table: 'attendance_sessions',
-    record: finalClosed,
-  });
-  eventBus.emit('realtime_event', {
-    eventType: 'UPDATE',
-    action: 'UPDATE',
-    table: 'sessions',
-    record: finalClosed,
-  });
-
-  res.json({ session: finalClosed });
+  res.json({ session: closedSession || { id: sessionId, status: 'CLOSED' } });
 });
 
 // DELETE /api/sessions/:id
 router.delete('/:id', async (req, res) => {
   const sessionId = req.params.id;
   try {
-    // 1. Unlink any attendance records pointing to this session first
-    try {
-      await supabaseAdmin.from('attendance').update({ session_id: null }).eq('session_id', sessionId);
-    } catch (_) {}
-
-    // 2. Unlink any audit_log entries referencing this session
-    try {
-      await supabaseAdmin.from('audit_log').update({ attendance_session_id: null }).eq('attendance_session_id', sessionId);
-    } catch (_) {}
-
-    // 3. Mark as DELETED and closed first (soft-delete guarantee)
-    try {
-      await supabaseAdmin
-        .from('attendance_sessions')
-        .update({ status: 'DELETED', closed_at: new Date().toISOString() })
-        .eq('id', sessionId);
-    } catch (_) {}
-
-    // 4. Hard delete from database
-    const { error } = await supabaseAdmin.from('attendance_sessions').delete().eq('id', sessionId);
-    if (error) {
-      console.warn('Supabase session delete notice:', error.message || error);
-    }
+    await supabaseAdmin.from('attendance_sessions').delete().eq('id', sessionId);
   } catch (err) {
     console.warn('Delete session notice:', err.message);
   }
 
-  // Remove from inMemorySessions
-  for (let i = inMemorySessions.length - 1; i >= 0; i--) {
-    if (String(inMemorySessions[i].id) === String(sessionId)) {
-      inMemorySessions.splice(i, 1);
-    }
-  }
+  const idx = inMemorySessions.findIndex((s) => s.id === sessionId);
+  if (idx !== -1) inMemorySessions.splice(idx, 1);
 
-  // Broadcast realtime event so connected Admin Dashboards and Student PWAs update immediately
-  eventBus.emit('session_deleted', { id: sessionId });
-  eventBus.emit('realtime_event', {
-    eventType: 'DELETE',
-    action: 'DELETE',
-    table: 'attendance_sessions',
-    record: { id: sessionId },
-  });
-  eventBus.emit('realtime_event', {
-    eventType: 'DELETE',
-    action: 'DELETE',
-    table: 'sessions',
-    record: { id: sessionId },
-  });
-
-  res.json({ success: true, deletedId: sessionId });
+  res.json({ success: true });
 });
 
 // GET /api/sessions/:id/attendance — who clocked in during this session
