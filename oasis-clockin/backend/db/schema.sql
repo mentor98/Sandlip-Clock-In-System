@@ -175,6 +175,8 @@ create table if not exists attendance_sessions (
   ends_at timestamptz,
   closed_at timestamptz,
   on_time_until time default '09:00',
+  admin_ip text,
+  active_qr_nonce text,
   created_at timestamptz not null default now()
 );
 
@@ -228,3 +230,8 @@ drop policy if exists "no direct client writes to attendance" on attendance;
 create policy "no direct client writes to attendance"
   on attendance for insert
   with check (false); -- all writes go through the backend's validated /api/attendance endpoints
+
+drop policy if exists "allow read active attendance_sessions" on attendance_sessions;
+create policy "allow read active attendance_sessions"
+  on attendance_sessions for select
+  using (true);

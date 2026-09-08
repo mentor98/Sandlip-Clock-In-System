@@ -133,16 +133,23 @@ create table if not exists attendance_sessions (
   ends_at timestamptz,
   closed_at timestamptz,
   on_time_until time default '09:00', -- Mark late if clock-in after this time
+  admin_ip text,
+  active_qr_nonce text,
   created_at timestamptz not null default now()
 );
 
--- Add on_time_until if table already exists without it
+-- Ensure all columns exist if table already created previously
 alter table attendance_sessions
-  add column if not exists on_time_until time default '09:00';
+  add column if not exists on_time_until time default '09:00',
+  add column if not exists admin_ip text,
+  add column if not exists active_qr_nonce text;
+
 alter table attendance_sessions enable row level security;
 drop policy if exists "no direct client access to sessions" on attendance_sessions;
-create policy "no direct client access to sessions"
-  on attendance_sessions for all using (false);
+drop policy if exists "allow read active attendance_sessions" on attendance_sessions;
+create policy "allow read active attendance_sessions"
+  on attendance_sessions for select
+  using (true);
 
 -- ── 9. Realtime publications ──────────────────────────────────────────────
 -- Enables Supabase Realtime for admin dashboard live updates (safely checks if already in publication)

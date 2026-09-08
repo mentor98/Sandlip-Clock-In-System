@@ -461,43 +461,84 @@ async function validateAttendance(params) {
 
   // ── 5. Active attendance session ───────────────────────────────────────────
   let activeSession = null;
+  const now = new Date();
+
+  function checkSessionValidity(s) {
+    if (!s) return false;
+    const statusUpper = String(s.status || '').toUpperCase();
+    if (statusUpper !== 'ACTIVE' && statusUpper !== 'OPEN') return false;
+    if (s.deleted_at || s.closed_at) return false;
+    if (s.ends_at) {
+      const end = new Date(s.ends_at);
+      if (!isNaN(end.getTime()) && end <= now) return false;
+    }
+    return true;
+  }
+
+  // A. Check if explicit sessionId passed
   if (sessionId) {
-    try {
-      const { data: sById } = await supabaseAdmin
-        .from('attendance_sessions')
-        .select('id, title, location_id, started_at, ends_at, status, admin_ip, created_by')
-        .eq('id', sessionId)
-        .single();
-      if (sById) activeSession = sById;
-    } catch (_) {}
+    activeSession = inMemorySessions.find(s => s.id === sessionId) || null;
     if (!activeSession) {
-      activeSession = inMemorySessions.find(s => s.id === sessionId) || null;
+      try {
+        const { data: sById } = await supabaseAdmin
+          .from('attendance_sessions')
+          .select('*')
+          .eq('id', sessionId)
+          .maybeSingle();
+        if (sById) activeSession = sById;
+      } catch (_) {}
     }
   }
 
+  // B. If not found yet, check inMemorySessions for any active session
+  if (!activeSession) {
+    activeSession = inMemorySessions.find(s => checkSessionValidity(s)) || null;
+  }
+
+  // C. If still not found, query Supabase attendance_sessions with resilient fallback
   if (!activeSession) {
     try {
-      const { data: qSession } = await supabaseAdmin
+      const { data: qSessions } = await supabaseAdmin
         .from('attendance_sessions')
-        .select('id, title, location_id, started_at, ends_at, status, admin_ip, created_by')
-        .eq('status', 'ACTIVE')
-        .lte('started_at', new Date().toISOString())
+        .select('*')
+        .or('status.eq.ACTIVE,status.eq.active,status.eq.OPEN,status.eq.open')
         .order('started_at', { ascending: false })
-        .limit(1)
-        .single();
-      if (qSession) activeSession = qSession;
-    } catch (_) {}
-    if (!activeSession) {
-      activeSession = inMemorySessions.find(s => s.status === 'ACTIVE') || null;
+        .limit(10);
+      if (qSessions && Array.isArray(qSessions) && qSessions.length > 0) {
+        const match = qSessions.find(s => checkSessionValidity(s));
+        if (match) {
+          activeSession = match;
+          const exists = inMemorySessions.some(m => m.id === match.id);
+          if (!exists) inMemorySessions.unshift(match);
+        }
+      }
+    } catch (err) {
+      console.warn('Session query by status notice:', err.message);
     }
+  }
+
+  // D. Fallback check to sessions table in Supabase
+  if (!activeSession) {
+    try {
+      const { data: altSessions } = await supabaseAdmin
+        .from('sessions')
+        .select('*')
+        .or('status.eq.ACTIVE,status.eq.active')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      if (altSessions && Array.isArray(altSessions)) {
+        const matchAlt = altSessions.find(s => checkSessionValidity(s) && (s.title || s.location_id));
+        if (matchAlt) activeSession = matchAlt;
+      }
+    } catch (_) {}
   }
 
   if (activeSession) {
-    if (activeSession.ends_at && new Date(activeSession.ends_at) < new Date()) {
+    if (activeSession.ends_at && new Date(activeSession.ends_at) < now) {
       try {
         await supabaseAdmin
           .from('attendance_sessions')
-          .update({ status: 'EXPIRED', closed_at: new Date().toISOString() })
+          .update({ status: 'EXPIRED', closed_at: now.toISOString() })
           .eq('id', activeSession.id);
       } catch (_) {}
       details.session = null;

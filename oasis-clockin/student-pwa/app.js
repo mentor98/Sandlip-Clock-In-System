@@ -1192,13 +1192,16 @@ function updateSessionUI(session) {
 
 async function loadSession() {
   try {
-    const res = await api('/sessions/active', { auth: false, timeoutMs: 3000 });
+    const res = await api('/sessions/active', { auth: false, timeoutMs: 5000 });
     const session = (res && res.session && res.active !== false) ? res.session : null;
     updateSessionUI(session);
     return session;
-  } catch {
-    updateSessionUI(null);
-    return null;
+  } catch (e) {
+    console.warn('Session load notice:', e.message);
+    if (!state.activeSession) {
+      updateSessionUI(null);
+    }
+    return state.activeSession || null;
   }
 }
 

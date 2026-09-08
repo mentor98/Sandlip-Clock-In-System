@@ -145,20 +145,27 @@ router.all('/identify', async (req, res) => {
     // 5. Check active attendance session first
     const { inMemorySessions } = require('../utils/sharedSessions');
     const { hasStudentAttendedSession, scannedStudentSessions } = require('../services/attendanceValidator');
-    let activeSession = null;
-    try {
-      const { data: s } = await supabaseAdmin
-        .from('attendance_sessions')
-        .select('id, title, location_id, locations(name), started_at, ends_at, status')
-        .eq('status', 'ACTIVE')
-        .lte('started_at', new Date().toISOString())
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (s && (!s.ends_at || new Date(s.ends_at) > new Date())) activeSession = s;
-    } catch (_) {}
+    const now = new Date();
+    let activeSession = inMemorySessions.find(s => {
+      const st = String(s.status || '').toUpperCase();
+      return (st === 'ACTIVE' || st === 'OPEN') && !s.deleted_at && !s.closed_at && (!s.ends_at || new Date(s.ends_at) > now);
+    }) || null;
+
     if (!activeSession) {
-      activeSession = inMemorySessions.find(s => s.status === 'ACTIVE' && (!s.ends_at || new Date(s.ends_at) > new Date())) || null;
+      try {
+        const { data: sList } = await supabaseAdmin
+          .from('attendance_sessions')
+          .select('*')
+          .or('status.eq.ACTIVE,status.eq.active,status.eq.OPEN,status.eq.open')
+          .order('started_at', { ascending: false })
+          .limit(5);
+        if (sList && Array.isArray(sList)) {
+          activeSession = sList.find(s => {
+            const st = String(s.status || '').toUpperCase();
+            return (st === 'ACTIVE' || st === 'OPEN') && !s.deleted_at && !s.closed_at && (!s.ends_at || new Date(s.ends_at) > now);
+          }) || null;
+        }
+      } catch (_) {}
     }
 
     // 6. Check today's clock-in status

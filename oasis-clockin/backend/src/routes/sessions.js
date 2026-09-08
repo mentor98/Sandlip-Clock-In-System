@@ -84,41 +84,87 @@ router.get('/:id/stream', (req, res) => {
   });
 });
 
+// Helper to check if a session record is currently active
+function isSessionActive(s, now = new Date()) {
+  if (!s) return false;
+  const statusUpper = String(s.status || '').toUpperCase();
+  if (statusUpper !== 'ACTIVE' && statusUpper !== 'OPEN') return false;
+  if (s.deleted_at || s.closed_at) return false;
+  if (s.ends_at) {
+    const end = new Date(s.ends_at);
+    if (!isNaN(end.getTime()) && end <= now) return false;
+  }
+  return true;
+}
+
 // GET /api/sessions/active — public status check for students to know if a session is open
 router.get('/active', async (_req, res) => {
   const now = new Date();
-  const nowIso = now.toISOString();
+  let activeSession = null;
 
+  // 1. First check inMemorySessions
+  activeSession = inMemorySessions.find((s) => isSessionActive(s, now)) || null;
+
+  // 2. Query Supabase attendance_sessions with resilient fallback queries
   try {
-    const { data, error } = await supabaseAdmin
+    // Attempt A: with location join
+    let queryRes = await supabaseAdmin
       .from('attendance_sessions')
-      .select('id, title, location_id, locations(name), started_at, ends_at, status')
-      .eq('status', 'ACTIVE')
-      .lte('started_at', nowIso)
+      .select('*, locations(name)')
+      .or('status.eq.ACTIVE,status.eq.active,status.eq.OPEN,status.eq.open')
       .order('started_at', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(10);
 
-    if (!error && data && data.status === 'ACTIVE') {
-      if (!data.ends_at || new Date(data.ends_at) > now) {
-        return res.json({ session: data, active: true });
+    // If join or table structure failed, retry with plain select('*')
+    if (queryRes.error || !queryRes.data) {
+      queryRes = await supabaseAdmin
+        .from('attendance_sessions')
+        .select('*')
+        .or('status.eq.ACTIVE,status.eq.active,status.eq.OPEN,status.eq.open')
+        .order('started_at', { ascending: false })
+        .limit(10);
+    }
+
+    if (queryRes.data && Array.isArray(queryRes.data) && queryRes.data.length > 0) {
+      const match = queryRes.data.find((s) => isSessionActive(s, now));
+      if (match) {
+        activeSession = match;
+        // Keep inMemorySessions synchronized
+        const existsInMem = inMemorySessions.some(m => m.id === match.id);
+        if (!existsInMem) inMemorySessions.unshift(match);
       }
     }
   } catch (err) {
-    console.warn('Active session query notice:', err.message);
+    console.warn('Active session Supabase lookup notice:', err.message);
   }
 
-  const active = inMemorySessions.find((s) => {
-    if (s.status !== 'ACTIVE' || s.deleted_at) return false;
-    if (s.ends_at && new Date(s.ends_at) <= now) return false;
-    return true;
-  }) || null;
-
-  if (active) {
-    return res.json({ session: active, active: true });
+  // 3. Check fallback sessions table in Supabase if needed
+  if (!activeSession) {
+    try {
+      const { data: altSessions } = await supabaseAdmin
+        .from('sessions')
+        .select('*')
+        .or('status.eq.ACTIVE,status.eq.active')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      if (altSessions && Array.isArray(altSessions)) {
+        const matchAlt = altSessions.find(s => isSessionActive(s, now) && (s.title || s.location_id));
+        if (matchAlt) {
+          activeSession = matchAlt;
+        }
+      }
+    } catch (_) {}
   }
 
-  res.json({ session: null, active: false, message: 'Please wait for an admin to open a session before clocking in.' });
+  if (activeSession) {
+    return res.json({ session: activeSession, active: true });
+  }
+
+  return res.json({
+    session: null,
+    active: false,
+    message: 'Please wait for an admin to open a session before clocking in.',
+  });
 });
 
 // ── Admin only below ──────────────────────────────────────────────────────────

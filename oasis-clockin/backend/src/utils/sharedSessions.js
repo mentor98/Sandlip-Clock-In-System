@@ -24,20 +24,32 @@ function toValidUuid(val, defaultUuid = 'c0000000-0000-0000-0000-000000000001') 
 
 async function findSession(sessionId) {
   if (!sessionId) return null;
-  // 1. Try Supabase
+  // 1. Try In-Memory first
+  const mem = inMemorySessions.find((s) => s.id === sessionId);
+  if (mem) return mem;
+
+  // 2. Try Supabase attendance_sessions
   try {
-    const { data: session } = await supabaseAdmin
+    let { data: session } = await supabaseAdmin
       .from('attendance_sessions')
       .select('*, locations(name)')
       .eq('id', sessionId)
       .maybeSingle();
 
-    if (session) return session;
-  } catch (_) {}
+    if (!session) {
+      const { data: rawSession } = await supabaseAdmin
+        .from('attendance_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .maybeSingle();
+      session = rawSession;
+    }
 
-  // 2. Try In-Memory
-  const mem = inMemorySessions.find((s) => s.id === sessionId);
-  if (mem) return mem;
+    if (session) {
+      inMemorySessions.unshift(session);
+      return session;
+    }
+  } catch (_) {}
 
   return null;
 }

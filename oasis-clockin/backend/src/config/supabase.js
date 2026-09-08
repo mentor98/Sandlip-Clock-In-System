@@ -136,7 +136,22 @@ const tables = {
       qr_generated_at: new Date().toISOString(),
     },
   ],
-  attendance_sessions: [],
+  attendance_sessions: [
+    {
+      id: 'e0000000-0000-0000-0000-000000000001',
+      title: 'Daily Oasis Classroom Session',
+      location_id: defaultLocId,
+      created_by: defaultAdminId,
+      status: 'ACTIVE',
+      started_at: new Date().toISOString(),
+      ends_at: null,
+      closed_at: null,
+      on_time_until: '09:00',
+      admin_ip: '192.168.1.156',
+      active_qr_nonce: 'initial-nonce-session-1',
+      created_at: new Date().toISOString(),
+    },
+  ],
   organization_config: [
     {
       id: 'default',
