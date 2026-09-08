@@ -1171,7 +1171,12 @@ function updateSessionUI(session) {
       }
     } else {
       frontBanner.className = 'front-session-card session-none';
-      frontBanner.style.display = 'none';
+      frontTitle.innerHTML = `<span class="session-dot-amber"></span> No Session Running`;
+      frontDesc.textContent = 'Please wait for an administrator to open an attendance session before clocking in.';
+      frontBanner.style.display = 'flex';
+      if (frontBtnText && (!frontBtn || !frontBtn.disabled)) {
+        frontBtnText.textContent = 'Clock In';
+      }
     }
   }
 
@@ -1183,16 +1188,64 @@ function updateSessionUI(session) {
       homeBanner.className = 'session-banner';
       homeBanner.style.display = 'flex';
     } else {
-      homeBanner.style.display = 'none';
+      homeBanner.innerHTML = `<span class="session-dot-amber"></span> <div>No session running · Waiting for administrator to start session</div>`;
+      homeBanner.className = 'session-banner session-none';
+      homeBanner.style.display = 'flex';
     }
   }
 
   applyClockButtonState();
 }
 
+let sessionEventSource = null;
+
+function setupSessionRealtimeStream() {
+  if (typeof window === 'undefined' || !window.EventSource) return;
+
+  if (sessionEventSource) {
+    try { sessionEventSource.close(); } catch (_) {}
+    sessionEventSource = null;
+  }
+
+  try {
+    const base = getApiBase();
+    const streamUrl = base === '/api' ? '/api/sessions/active/stream' : `${base}/sessions/active/stream`;
+    sessionEventSource = new EventSource(streamUrl);
+
+    sessionEventSource.addEventListener('session', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const session = (data && data.session && data.active !== false) ? data.session : null;
+        updateSessionUI(session);
+      } catch (e) {
+        console.warn('Realtime session event notice:', e);
+      }
+    });
+
+    sessionEventSource.addEventListener('attendance', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const curStudentId = state.studentId || state.student?.student_id;
+        const evStudentId = data.student_id || data.students?.student_id;
+        if (curStudentId && evStudentId && String(curStudentId).trim().toLowerCase() === String(evStudentId).trim().toLowerCase()) {
+          state.clockedIn = true;
+          applyClockButtonState();
+          if (typeof loadHistory === 'function') loadHistory();
+        }
+      } catch (_) {}
+    });
+
+    sessionEventSource.onerror = () => {
+      // Browser handles auto-reconnect with backoff
+    };
+  } catch (err) {
+    console.warn('Realtime session EventSource init notice:', err);
+  }
+}
+
 async function loadSession() {
   try {
-    const res = await api('/sessions/active', { auth: false, timeoutMs: 5000 });
+    const res = await api('/sessions/active', { auth: false, timeoutMs: 4000 });
     const session = (res && res.session && res.active !== false) ? res.session : null;
     updateSessionUI(session);
     return session;
@@ -2490,7 +2543,10 @@ setInterval(updateServerStatusPill, 30000);
   updateServerStatusPill();
   flushOfflineAttendanceQueue();
 
-  // Load session status right away and poll periodically so student sees active/no session changes in real time
+  // Connect to live real-time session updates stream for 0ms active/closed sync
+  setupSessionRealtimeStream();
+
+  // Load session status right away and poll periodically as dual-layer fallback
   await loadSession();
   setInterval(loadSession, 4000);
 

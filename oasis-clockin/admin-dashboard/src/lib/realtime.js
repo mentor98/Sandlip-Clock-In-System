@@ -26,8 +26,28 @@ function getSharedEventSource() {
       sharedEventSource.addEventListener('realtime', (e) => {
         try {
           const parsed = JSON.parse(e.data);
+          const normalized = {
+            ...parsed,
+            eventType: parsed.eventType || parsed.action || 'INSERT',
+          };
           sseListeners.forEach((listener) => {
-            try { listener(parsed); } catch (_) {}
+            try { listener(normalized); } catch (_) {}
+          });
+        } catch (_) {}
+      });
+
+      sharedEventSource.addEventListener('session', (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          const sessionRecord = parsed.session || parsed;
+          const normalized = {
+            eventType: parsed.active === false ? 'DELETE' : 'UPDATE',
+            table: 'attendance_sessions',
+            record: sessionRecord,
+            session: sessionRecord,
+          };
+          sseListeners.forEach((listener) => {
+            try { listener(normalized); } catch (_) {}
           });
         } catch (_) {}
       });
@@ -64,7 +84,13 @@ export function subscribeTable(table, event = '*', callback) {
   // 1. Shared SSE listener
   const sseHandler = (payload) => {
     if (!payload) return;
-    if (!table || table === '*' || payload.table === table) {
+    const pTable = String(payload.table || '').toLowerCase();
+    const tTable = String(table || '').toLowerCase();
+    const isSessionMatch =
+      (tTable === 'sessions' || tTable === 'attendance_sessions') &&
+      (pTable === 'sessions' || pTable === 'attendance_sessions');
+
+    if (!table || table === '*' || pTable === tTable || isSessionMatch) {
       callback(payload);
     }
   };

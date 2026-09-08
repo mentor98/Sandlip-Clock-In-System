@@ -44,8 +44,32 @@ router.get('/stream', (req, res) => {
     } catch (_) {}
   };
 
+  const onSessionStarted = (sess) => {
+    try {
+      res.write(`event: session\ndata: ${JSON.stringify({ active: true, session: sess })}\n\n`);
+      res.write(`event: realtime\ndata: ${JSON.stringify({ table: 'attendance_sessions', action: 'INSERT', eventType: 'INSERT', record: sess })}\n\n`);
+    } catch (_) {}
+  };
+
+  const onSessionClosed = (sess) => {
+    try {
+      res.write(`event: session\ndata: ${JSON.stringify({ active: false, session: sess })}\n\n`);
+      res.write(`event: realtime\ndata: ${JSON.stringify({ table: 'attendance_sessions', action: 'UPDATE', eventType: 'UPDATE', record: sess })}\n\n`);
+    } catch (_) {}
+  };
+
+  const onSessionDeleted = (data) => {
+    try {
+      res.write(`event: session\ndata: ${JSON.stringify({ active: false, deletedId: data.id })}\n\n`);
+      res.write(`event: realtime\ndata: ${JSON.stringify({ table: 'attendance_sessions', action: 'DELETE', eventType: 'DELETE', record: data })}\n\n`);
+    } catch (_) {}
+  };
+
   eventBus.on('realtime_event', onRealtimeEvent);
   eventBus.on('attendance_recorded', onAttendanceRecorded);
+  eventBus.on('session_started', onSessionStarted);
+  eventBus.on('session_closed', onSessionClosed);
+  eventBus.on('session_deleted', onSessionDeleted);
 
   const heartbeat = setInterval(() => {
     try {
@@ -69,6 +93,9 @@ router.get('/stream', (req, res) => {
     clearTimeout(serverlessTimeout);
     eventBus.removeListener('realtime_event', onRealtimeEvent);
     eventBus.removeListener('attendance_recorded', onAttendanceRecorded);
+    eventBus.removeListener('session_started', onSessionStarted);
+    eventBus.removeListener('session_closed', onSessionClosed);
+    eventBus.removeListener('session_deleted', onSessionDeleted);
   });
 });
 

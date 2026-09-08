@@ -54,9 +54,10 @@
   const unsub2 = subscribeTable('devices', '*', debouncedLoad);
   const unsub3 = subscribeTable('students', '*', debouncedLoad);
   const unsub4 = subscribeTable('sessions', '*', debouncedLoad);
+  const unsub5 = subscribeTable('attendance_sessions', '*', debouncedLoad);
   onDestroy(() => {
     clearTimeout(loadTimer);
-    unsub1(); unsub2(); unsub3(); unsub4();
+    unsub1(); unsub2(); unsub3(); unsub4(); unsub5();
   });
 
   function statusColor(s) {

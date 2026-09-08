@@ -470,7 +470,7 @@ async function validateAttendance(params) {
     if (s.deleted_at || s.closed_at) return false;
     if (s.ends_at) {
       const end = new Date(s.ends_at);
-      if (!isNaN(end.getTime()) && end <= now) return false;
+      if (!isNaN(end.getTime()) && (end.getTime() + 60000) <= now.getTime()) return false;
     }
     return true;
   }
@@ -1085,6 +1085,7 @@ async function validateAndRecordAttendance(params) {
   });
 
   eventBus.emit('realtime_event', {
+    eventType: 'INSERT',
     table: 'attendance',
     action: 'INSERT',
     record: {

@@ -69,11 +69,13 @@
   });
 
   const unsubSessions = subscribeTable('sessions', '*', debouncedLoad);
+  const unsubAttSessions = subscribeTable('attendance_sessions', '*', debouncedLoad);
 
   onDestroy(() => {
     clearTimeout(loadTimer);
     unsub();
     unsubSessions();
+    unsubAttSessions();
     clearInterval(qrTimer);
     clearInterval(autoRefreshTimer);
     if (liveSse) {
@@ -107,7 +109,7 @@
       await api(`/sessions/${s.id}/close`, { method: 'PATCH' });
       successMsg = `Session "${s.title}" closed.`;
       if (qrSession?.id === s.id) closeLiveQr();
-      load();
+      await load();
     } catch (e) { error = e.message; }
   }
 
