@@ -48,13 +48,7 @@
 
     <aside class="sidebar" class:open={mobileMenuOpen}>
       <div class="brand">
-        <div class="logo-box">
-          <Icon name="clock" size={20} color="#ffffff" strokeWidth={2.2} />
-        </div>
-        <div class="brand-text">
-          <span class="brand-name">Oasis ClockIn</span>
-          <span class="brand-sub">Enterprise Portal</span>
-        </div>
+        <img src="https://res.cloudinary.com/jinrrp4r/image/upload/v1788528009/clockin_logo_urwgwc.png" alt="ClockIn Logo" class="sidebar-logo-img" />
         <button class="close-drawer-btn" on:click={() => (mobileMenuOpen = false)} aria-label="Close menu">
           <Icon name="x" size={18} color="#94a3b8" />
         </button>
@@ -74,7 +68,7 @@
       <div class="sidebar-footer">
         <a href="/" class="student-link" title="Open Student Mobile PWA">
           <Icon name="smartphone" size={15} />
-          <span>Student App</span>
+          <span>Access Student Portal</span>
         </a>
         <button class="logout" on:click={handleLogout}>
           <Icon name="logout" size={15} />
@@ -90,12 +84,6 @@
             <Icon name="menu" size={20} color="#0f172a" />
           </button>
           <h2 class="page-title">{tabLabels[tab] || ''}</h2>
-        </div>
-        <div class="topbar-right">
-          <span class="live-status">
-            <span class="pulse-dot"></span>
-            <span class="live-text">System Active</span>
-          </span>
         </div>
       </header>
       <div class="page">
@@ -115,34 +103,64 @@
 
 <style>
   :global(*, *::before, *::after) { box-sizing: border-box; }
+  :global(html) {
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
   :global(body) {
     margin: 0;
+    padding: 0;
     background: #f8fafc;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     color: #0f172a;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  :global(::-webkit-scrollbar) {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  :global(*) {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  :global(code) {
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+  }
+  :global(th) {
+    white-space: nowrap !important;
   }
 
-  .shell { display: flex; min-height: 100vh; }
+  .shell {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
 
   .sidebar {
     width: 240px; background: #071527; color: #f1f5f9;
-    display: flex; flex-direction: column; padding: 24px 16px;
+    display: flex; flex-direction: column; padding: 20px 14px;
     flex-shrink: 0; position: fixed; top: 0; left: 0; bottom: 0;
     overflow-y: auto; border-right: 1px solid rgba(50, 240, 0, 0.12);
     z-index: 20;
+    scrollbar-width: none;
   }
-  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; padding: 0 6px; }
-  .brand-text { flex: 1; }
-  .logo-box {
-    width: 38px; height: 38px; border-radius: 10px;
-    background: linear-gradient(135deg, #32F000 0%, #0db872 32%, #0284c7 68%, #073B78 100%);
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 14px rgba(50, 240, 0, 0.35);
-    flex-shrink: 0;
+  .sidebar::-webkit-scrollbar { display: none; }
+  .brand { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding: 0 4px; }
+  .sidebar-logo-img {
+    height: 38px;
+    width: auto;
+    max-width: 160px;
+    object-fit: contain;
+    display: block;
   }
-  .brand-name { display: block; font-weight: 800; font-size: 15.5px; letter-spacing: -0.01em; color: #ffffff; }
-  .brand-sub { display: block; font-size: 10.5px; color: #93c5fd; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 
   .close-drawer-btn {
     display: none;
@@ -206,7 +224,7 @@
     display: flex; align-items: center; gap: 9px; padding: 9px 12px;
     border-radius: 8px; text-decoration: none; color: #32F000;
     background: rgba(50, 240, 0, 0.1); border: 1px solid rgba(50, 240, 0, 0.2);
-    font-size: 13px; font-weight: 700;
+    font-size: 12.5px; font-weight: 700; white-space: nowrap;
     transition: all 0.15s;
   }
   .student-link:hover { background: rgba(50, 240, 0, 0.18); color: #ffffff; }
@@ -219,25 +237,26 @@
   }
   .logout:hover { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.25); color: #fca5a5; }
 
-  .content { margin-left: 240px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; background: #f8fafc; }
+  .content {
+    margin-left: 240px;
+    flex: 1;
+    min-width: 0;
+    width: calc(100% - 240px);
+    max-width: calc(100vw - 240px);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: #f8fafc;
+    overflow-x: hidden;
+  }
   .topbar {
-    background: #ffffff; padding: 16px 32px; border-bottom: 1px solid #e2e8f0;
+    background: #ffffff; padding: 12px 24px; border-bottom: 1px solid #e2e8f0;
     position: sticky; top: 0; z-index: 10;
     display: flex; align-items: center; justify-content: space-between;
     box-shadow: 0 1px 3px 0 rgba(7, 59, 120, 0.04);
   }
-  .page-title { margin: 0; font-size: 18px; font-weight: 800; color: #071527; letter-spacing: -0.01em; }
-  .live-status {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-size: 12px; font-weight: 700; color: #15803d;
-    background: #f0fdf4; border: 1px solid #bbf7d0;
-    padding: 5px 12px; border-radius: 999px;
-  }
-  .pulse-dot {
-    width: 7px; height: 7px; border-radius: 50%; background: #32F000;
-    box-shadow: 0 0 8px rgba(50, 240, 0, 0.8);
-  }
-  .page { padding: 28px 32px; flex: 1; }
+  .page-title { margin: 0; font-size: 17px; font-weight: 800; color: #071527; letter-spacing: -0.01em; }
+  .page { padding: 18px 22px; flex: 1; min-width: 0; width: 100%; overflow-x: hidden; }
 
   @media (max-width: 992px) {
     .menu-btn { display: inline-flex; }

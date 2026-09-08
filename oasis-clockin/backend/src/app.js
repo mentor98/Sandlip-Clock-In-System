@@ -13,6 +13,7 @@ const adminRoutes = require('./routes/admin');
 const adminAuthRoutes = require('./routes/adminAuth');
 const organizationRoutes = require('./routes/organization');
 const sessionRoutes = require('./routes/sessions');
+const deviceRoutes = require('./routes/device');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -41,13 +42,40 @@ app.all(['/api', '/api/'], (_req, res) => res.json({
   timestamp: new Date().toISOString()
 }));
 
-app.all('/api/health', (_req, res) => res.json({
-  ok: true,
-  wifi_ssid: 'The Oasis',
-  wifi_mac: 'be:64:b4:14:4d:67',
-  wifi_ip: '192.168.1.156',
-  timestamp: new Date().toISOString()
-}));
+app.all('/api/health', async (_req, res) => {
+  const { supabaseAdmin, isSupabaseConfigured } = require('./config/supabase');
+  let databaseMode = isSupabaseConfigured ? 'supabase_cloud' : 'in_memory_store';
+  let databaseConnected = true;
+  let errorMsg = null;
+
+  if (isSupabaseConfigured) {
+    try {
+      const { error } = await supabaseAdmin.from('students').select('id').limit(1);
+      if (error) {
+        databaseConnected = false;
+        errorMsg = error.message;
+      }
+    } catch (e) {
+      databaseConnected = false;
+      errorMsg = e.message;
+    }
+  }
+
+  res.json({
+    ok: true,
+    portal: 'online',
+    admin: 'online',
+    database: {
+      mode: databaseMode,
+      connected: databaseConnected,
+      error: errorMsg,
+    },
+    wifi_ssid: 'The Oasis',
+    wifi_mac: 'be:64:b4:14:4d:67',
+    wifi_ip: '192.168.1.156',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Debug endpoint for student inspection
 app.get('/api/debug/student/:student_id', async (req, res) => {
@@ -72,6 +100,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/admin-auth', authLimiter, adminAuthRoutes);
 app.use('/api/organization', organizationRoutes);
 app.use('/api/sessions', sessionRoutes);
+app.use('/api/device', deviceRoutes);
+app.use('/api/location', deviceRoutes);
 
 // Static assets serving for standalone node execution
 let adminDistPath = path.join(__dirname, '../../admin-dashboard/dist');

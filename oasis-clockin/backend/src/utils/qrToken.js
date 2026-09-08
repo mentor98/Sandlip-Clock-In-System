@@ -16,21 +16,25 @@ function generateLocationToken(optsOrLocId, maybeNonce) {
   let adminIp = null;
   let sessionId = null;
 
+  let ttlSeconds = null;
   if (typeof optsOrLocId === 'object' && optsOrLocId !== null) {
     locationId = optsOrLocId.locationId;
     nonce = optsOrLocId.nonce;
     adminId = optsOrLocId.adminId || null;
     adminIp = optsOrLocId.adminIp || null;
     sessionId = optsOrLocId.sessionId || null;
+    ttlSeconds = optsOrLocId.ttlSeconds || null;
   } else {
     locationId = optsOrLocId;
     nonce = maybeNonce;
   }
 
+  const effectiveTtl = (ttlSeconds && ttlSeconds > 0) ? ttlSeconds : TTL();
+
   const payload = {
     lid: locationId,
     iat: Date.now(),
-    ttl: TTL() * 1000,
+    ttl: effectiveTtl * 1000,
     nonce,
     aid: adminId,
     aip: adminIp,

@@ -33,7 +33,7 @@ const tables = {
       student_id: 'SAN-2026-014',
       email: 'emmanuel@oasis.edu',
       registered_ip: '192.168.1.156',
-      registered_mac: 'BE:64:B4:14:4D:67',
+      registered_mac: 'A4:C3:F0:12:34:56',
       role: 'student',
       status: 'active',
       created_at: new Date(Date.now() - 86400000 * 30).toISOString(),
@@ -44,7 +44,7 @@ const tables = {
       student_id: 'SAN-2026-015',
       email: 'charles@oasis.edu',
       registered_ip: '192.168.1.156',
-      registered_mac: 'BE:64:B4:14:4D:67',
+      registered_mac: '38:F9:D3:88:21:4B',
       role: 'student',
       status: 'active',
       created_at: new Date(Date.now() - 86400000 * 20).toISOString(),
@@ -55,7 +55,7 @@ const tables = {
       student_id: 'SAN-2026-016',
       email: 'grace@oasis.edu',
       registered_ip: '192.168.1.156',
-      registered_mac: 'BE:64:B4:14:4D:67',
+      registered_mac: 'BC:D0:74:9A:15:E2',
       role: 'student',
       status: 'active',
       created_at: new Date(Date.now() - 86400000 * 10).toISOString(),
@@ -65,7 +65,7 @@ const tables = {
     {
       id: 'dev-00000000-0000-0000-0000-000000000001',
       student_id: defaultStudent1Id,
-      mac_address: 'BE:64:B4:14:4D:67',
+      mac_address: 'A4:C3:F0:12:34:56',
       webauthn_credential_id: 'sample-credential-ada-001',
       public_key: 'sample-public-key-ada-001',
       counter: 1,
@@ -80,7 +80,7 @@ const tables = {
     {
       id: 'dev-00000000-0000-0000-0000-000000000002',
       student_id: defaultStudent2Id,
-      mac_address: 'BE:64:B4:14:4D:67',
+      mac_address: '38:F9:D3:88:21:4B',
       webauthn_credential_id: 'sample-credential-charles-002',
       public_key: 'sample-public-key-charles-002',
       counter: 1,
@@ -95,7 +95,7 @@ const tables = {
     {
       id: 'dev-00000000-0000-0000-0000-000000000003',
       student_id: defaultStudent3Id,
-      mac_address: 'BE:64:B4:14:4D:67',
+      mac_address: 'BC:D0:74:9A:15:E2',
       webauthn_credential_id: 'sample-credential-grace-003',
       public_key: 'sample-public-key-grace-003',
       counter: 1,
@@ -577,4 +577,4 @@ if (!supabaseAdmin) {
   };
 }
 
-module.exports = { supabaseAdmin };
+module.exports = { supabaseAdmin, isSupabaseConfigured };

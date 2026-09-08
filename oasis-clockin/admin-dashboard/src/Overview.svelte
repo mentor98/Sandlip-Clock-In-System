@@ -31,7 +31,8 @@
       stats.pendingDevices = (devicesRes.devices || []).filter(d => d.status === 'PENDING').length;
 
       const today = new Date().toISOString().slice(0, 10);
-      const todayRecords = (attendanceRes.attendance || []).filter(r => r.recorded_at?.startsWith(today));
+      const allAttendance = attendanceRes.attendance || [];
+      const todayRecords = allAttendance.filter(r => r.recorded_at?.startsWith(today));
       stats.presentToday = new Set(todayRecords.filter(r => r.type === 'clock_in').map(r => r.student_id)).size;
 
       const auditRes = await api('/admin/audit-log').catch(() => ({ audit_log: [] }));
@@ -39,7 +40,7 @@
       stats.rejectedToday = todayAudit.filter(e => e.event_type === 'attendance_rejected' && e.detail?.status === 'REJECTED').length;
       stats.reviewToday = todayAudit.filter(e => e.event_type === 'attendance_rejected' && e.detail?.status === 'REVIEW').length;
 
-      recentAttendance = todayRecords.slice(0, 10);
+      recentAttendance = (todayRecords.length > 0 ? todayRecords : allAttendance).slice(0, 10);
 
       const activeSessions = (sessionRes.sessions || [])
         .filter(s => s.status === 'ACTIVE')
@@ -204,10 +205,12 @@
                   </span>
                 </td>
                 <td>
-                  {#if r.type === 'clock_in' && r.punctuality}
-                    <span class="punct-chip punct-{r.punctuality.toLowerCase()}">{r.punctuality}</span>
-                  {:else if r.type === 'clock_in'}
-                    <span class="punct-chip punct-towards">RECORDED</span>
+                  {#if r.type === 'clock_in'}
+                    {#if r.punctuality === 'LATE' || r.is_late}
+                      <span class="punct-chip punct-late">LATE</span>
+                    {:else}
+                      <span class="punct-chip punct-early">EARLY</span>
+                    {/if}
                   {:else}
                     <span class="muted">—</span>
                   {/if}
@@ -336,21 +339,34 @@
 
   .table-container {
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     width: 100%;
+  }
+  .table-container::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   table {
     width: 100%;
-    min-width: 620px;
     border-collapse: collapse;
-    font-size: 13.5px;
+    font-size: 12px;
+    table-layout: auto;
   }
   th {
-    background: #f8fafc; text-align: left; padding: 12px 20px;
-    color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
-    letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc; text-align: left; padding: 8px 10px;
+    color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.03em; border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
   }
-  td { padding: 14px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    white-space: nowrap;
+    font-size: 12px;
+  }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
 

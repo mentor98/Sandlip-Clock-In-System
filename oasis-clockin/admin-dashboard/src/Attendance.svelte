@@ -24,8 +24,9 @@
     } catch {}
   }
 
-  async function load() {
-    loading = true; error = '';
+  async function load(showSpinner = false) {
+    if (showSpinner || records.length === 0) loading = true;
+    error = '';
     try {
       const params = new URLSearchParams();
       if (filterFrom) params.set('from', filterFrom);
@@ -50,9 +51,9 @@
   }
 
   loadLocations();
-  load();
+  load(true);
 
-  const unsubAttendance = subscribeTable('attendance', '*', () => load());
+  const unsubAttendance = subscribeTable('attendance', '*', () => load(false));
   onDestroy(() => unsubAttendance());
 
   function typeLabel(t) { return t === 'clock_in' ? 'Clock In' : 'Clock Out'; }
@@ -60,9 +61,8 @@
 
   $: totalIn = records.filter(r => r.type === 'clock_in').length;
   $: totalOut = records.filter(r => r.type === 'clock_out').length;
-  $: earlyCount = records.filter(r => r.punctuality === 'EARLY').length;
-  $: towardsCount = records.filter(r => r.punctuality === 'TOWARDS').length;
-  $: lateCount = records.filter(r => r.punctuality === 'LATE' || r.is_late).length;
+  $: earlyCount = records.filter(r => r.type === 'clock_in' && r.punctuality !== 'LATE' && !r.is_late).length;
+  $: lateCount = records.filter(r => r.type === 'clock_in' && (r.punctuality === 'LATE' || r.is_late)).length;
   $: uniqueStudents = new Set(records.map(r => r.student_id)).size;
 </script>
 
@@ -92,7 +92,6 @@
         <select bind:value={filterPunctuality}>
           <option value="">All Punctuality</option>
           <option value="EARLY">Early Arrivals</option>
-          <option value="TOWARDS">Towards / On-Time</option>
           <option value="LATE">Late Clock-Ins</option>
         </select>
       </div>
@@ -131,10 +130,6 @@
       <span class="stat-lbl">Early Arrivals</span>
     </div>
     <div class="stat">
-      <span class="stat-val punct-towards-txt">{towardsCount}</span>
-      <span class="stat-lbl">Towards / On-Time</span>
-    </div>
-    <div class="stat">
       <span class="stat-val punct-late-txt">{lateCount}</span>
       <span class="stat-lbl">Late Arrivals</span>
     </div>
@@ -146,13 +141,17 @@
       <span class="stat-val clock-out">{totalOut}</span>
       <span class="stat-lbl">Clock Outs</span>
     </div>
+    <div class="stat">
+      <span class="stat-val">{uniqueStudents}</span>
+      <span class="stat-lbl">Unique Students</span>
+    </div>
   </div>
 
   {#if error}<div class="notice error">{error}</div>{/if}
 
   <!-- Table -->
   <div class="table-wrap">
-    {#if loading}
+    {#if loading && records.length === 0}
       <p class="muted center pad-24">Loading attendance logs…</p>
     {:else if records.length === 0}
       <div class="empty-state">
@@ -177,14 +176,16 @@
           {#each records as r}
             <tr>
               <td class="bold">{r.students?.full_name || '—'}</td>
-              <td><code>{r.students?.student_id || '—'}</code></td>
+              <td class="nowrap-cell"><code>{r.students?.student_id || '—'}</code></td>
               <td>{r.locations?.name || '—'}</td>
               <td><span class="pill {typeClass(r.type)}">{typeLabel(r.type)}</span></td>
               <td>
-                {#if r.type === 'clock_in' && r.punctuality}
-                  <span class="punct-pill punct-{r.punctuality.toLowerCase()}">{r.punctuality}</span>
-                {:else if r.type === 'clock_in'}
-                  <span class="punct-pill punct-towards">RECORDED</span>
+                {#if r.type === 'clock_in'}
+                  {#if r.punctuality === 'LATE' || r.is_late}
+                    <span class="punct-pill punct-late">LATE</span>
+                  {:else}
+                    <span class="punct-pill punct-early">EARLY</span>
+                  {/if}
                 {:else}
                   <span class="muted">—</span>
                 {/if}
@@ -263,30 +264,44 @@
   .stat-lbl { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
 
   .table-wrap {
-    background: white; border: 1px solid #e2e8f0; border-radius: 14px;
+    background: white; border: 1px solid #e2e8f0; border-radius: 12px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     width: 100%;
+  }
+  .table-wrap::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   table {
     width: 100%;
-    min-width: 780px;
     border-collapse: collapse;
-    font-size: 13.5px;
+    font-size: 12px;
+    table-layout: auto;
   }
   th {
-    background: #f8fafc; text-align: left; padding: 12px 20px;
-    color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase;
-    letter-spacing: 0.04em; border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc; text-align: left; padding: 8px 10px;
+    color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.03em; border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
   }
-  td { padding: 13px 20px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+    white-space: nowrap;
+    font-size: 12px;
+  }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fafcff; }
 
+  .nowrap-cell { white-space: nowrap; }
   .bold { font-weight: 600; color: #0f172a; }
-  .muted { color: #94a3b8; }
-  .mono { font-family: monospace; font-size: 12px; }
+  .muted { color: #94a3b8; font-size: 11.5px; }
+  .mono { font-family: monospace; font-size: 11.5px; }
   .center { text-align: center; }
   .pad-24 { padding: 24px; }
 

@@ -213,6 +213,8 @@ router.delete('/locations/:id', async (req, res) => {
 router.post('/locations/:id/generate-qr', async (req, res) => {
   const locationId = req.params.id;
   const adminIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '127.0.0.1';
+  const autoRotate = req.body?.auto_rotate !== false;
+  const ttlSeconds = autoRotate ? parseInt(process.env.QR_TOKEN_TTL_SECONDS || '25', 10) : 86400;
 
   // Verify location exists
   let location = null;
@@ -252,6 +254,7 @@ router.post('/locations/:id/generate-qr', async (req, res) => {
     nonce,
     adminId: req.user?.sub,
     adminIp,
+    ttlSeconds,
   });
   const forwardedProto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
   const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host;
@@ -274,7 +277,8 @@ router.post('/locations/:id/generate-qr', async (req, res) => {
     location_name: location.name,
     nonce,
     admin_ip: adminIp,
-    expires_in_seconds: parseInt(process.env.QR_TOKEN_TTL_SECONDS || '25', 10),
+    auto_rotate: autoRotate,
+    expires_in_seconds: ttlSeconds,
   });
 });
 
@@ -282,6 +286,7 @@ router.post('/locations/:id/generate-qr', async (req, res) => {
 router.post('/sessions/:id/generate-qr', async (req, res) => {
   const sessionId = req.params.id;
   const adminIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '127.0.0.1';
+  const autoRotate = req.body?.auto_rotate !== false;
 
   const session = await findSession(sessionId);
   if (!session) {
@@ -289,7 +294,7 @@ router.post('/sessions/:id/generate-qr', async (req, res) => {
   }
 
   try {
-    const payload = await generateSessionQrPayload(session, adminIp, req.user?.sub);
+    const payload = await generateSessionQrPayload(session, adminIp, req.user?.sub, { autoRotate });
     res.json(payload);
   } catch (err) {
     console.error('Session QR generation error:', err);
@@ -639,7 +644,7 @@ router.get('/attendance/export', async (req, res) => {
       `"${r.students?.student_id || ''}"`,
       `"${r.locations?.name || ''}"`,
       r.type || 'clock_in',
-      r.punctuality || 'EARLY',
+      (r.punctuality === 'LATE' ? 'LATE' : 'EARLY'),
       r.device_mac || '—',
       r.ip_address || '—',
       r.verification_status || 'VERIFIED',

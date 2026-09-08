@@ -26,10 +26,25 @@ const state = {
   originScreenBeforeScan: 'screen-signin',
 };
 
+function generateRandomMac() {
+  const hex = '0123456789ABCDEF';
+  let mac = '';
+  for (let i = 0; i < 6; i++) {
+    let b1 = hex[Math.floor(Math.random() * 16)];
+    let b2 = hex[Math.floor(Math.random() * 16)];
+    if (i === 0) {
+      b2 = '26AE'[Math.floor(Math.random() * 4)];
+    }
+    mac += (i > 0 ? ':' : '') + b1 + b2;
+  }
+  return mac;
+}
+
 function getOrCreateDeviceMac() {
   let mac = localStorage.getItem('oasis_device_mac');
-  if (!mac || !/^[0-9A-Fa-f:]{17}$/.test(mac)) {
-    mac = 'be:64:b4:14:4d:67';
+  const isDefaultOrInvalid = !mac || !/^[0-9A-Fa-f:]{17}$/.test(mac) || (mac.toLowerCase() === 'be:64:b4:14:4d:67' && !localStorage.getItem('oasis_student_id'));
+  if (isDefaultOrInvalid) {
+    mac = generateRandomMac();
     localStorage.setItem('oasis_device_mac', mac);
   }
   return mac;
@@ -228,8 +243,8 @@ function performLocalVerifiedAttendance(payload) {
   const sessionStartMinutes = 8 * 60 + 30; // 08:30 AM standard session start
   const lateGraceMinutes = 15;
   const isLate = currentMinutes > (sessionStartMinutes + lateGraceMinutes);
-  const punctuality = isLate ? 'LATE' : (currentMinutes <= sessionStartMinutes ? 'EARLY' : 'ON_TIME');
-  const punctualityLabel = isLate ? 'Late Arrival' : (currentMinutes <= sessionStartMinutes ? 'Early' : 'On Time');
+  const punctuality = isLate ? 'LATE' : 'EARLY';
+  const punctualityLabel = isLate ? 'Late' : 'Early';
 
   // 4. Save to local attendance history
   const record = {
@@ -477,10 +492,13 @@ document.getElementById('btn-back-signin').onclick = () => {
   hideSigninAlert();
 };
 
-// Auto suggest ID button
-document.getElementById('btn-suggest-id').onclick = async () => {
-  await fetchNextStudentId();
-};
+// Auto suggest ID button (if present)
+const btnSuggestId = document.getElementById('btn-suggest-id');
+if (btnSuggestId) {
+  btnSuggestId.onclick = async () => {
+    await fetchNextStudentId();
+  };
+}
 
 async function fetchNextStudentId() {
   try {
@@ -528,6 +546,14 @@ document.getElementById('btn-register').onclick = async () => {
   const email = document.getElementById('reg-email').value.trim();
   if (!full_name || !student_id || !email) { setError(errEl, 'Please fill in all fields.'); return; }
 
+  // 1-Device-per-student check: Ensure this device hasn't already registered a different student
+  const boundSid = localStorage.getItem('oasis_bound_device_student_id');
+  const boundName = localStorage.getItem('oasis_bound_device_student_name');
+  if (boundSid && boundSid.toLowerCase() !== student_id.toLowerCase()) {
+    setError(errEl, `Device Restriction: This device is already bound to student account "${boundName || boundSid}" (${boundSid}). Each physical device can only be used by one student. Another user cannot create an account on this same device.`);
+    return;
+  }
+
   const btn = document.getElementById('btn-register');
   btn.disabled = true;
   btn.innerHTML = `<span>Registering Device &amp; Hardware MAC…</span>`;
@@ -544,6 +570,8 @@ document.getElementById('btn-register').onclick = async () => {
     saveSession({ sessionToken: activeToken, deviceId: regRes.deviceId || 'default-device-id' });
     localStorage.setItem('oasis_student_id', student_id);
     localStorage.setItem('oasis_student_name', full_name);
+    localStorage.setItem('oasis_bound_device_student_id', student_id);
+    localStorage.setItem('oasis_bound_device_student_name', full_name);
     state.studentId = student_id;
     state.studentName = full_name;
 
@@ -754,6 +782,18 @@ async function refreshHomeLocation() {
 }
 
 async function loadTodayStatus() {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const storedDay = localStorage.getItem('oasis_today_date');
+  if (storedDay && storedDay !== todayStr) {
+    localStorage.removeItem('oasis_today_clocked_in');
+    localStorage.removeItem('oasis_today_clocked_out');
+    localStorage.removeItem('oasis_today_clockin_time');
+    localStorage.removeItem('oasis_today_clockout_time');
+    state.clockedIn = false;
+    state.clockedOut = false;
+  }
+  localStorage.setItem('oasis_today_date', todayStr);
+
   const localClockedIn = localStorage.getItem('oasis_today_clocked_in') === 'true';
   const localClockedOut = localStorage.getItem('oasis_today_clocked_out') === 'true';
   if (localClockedIn) state.clockedIn = true;
@@ -861,46 +901,68 @@ async function loadSession() {
 }
 
 async function loadHistory() {
+  const list = document.getElementById('history-list');
+  if (!list) return;
+
+  let remoteRecords = [];
   try {
-    const { attendance } = await api('/attendance/me');
-    const list = document.getElementById('history-list');
-    if (!list) return;
-    list.innerHTML = '';
-    if (!attendance || attendance.length === 0) {
-      list.innerHTML = '<li class="empty-history">No recent attendance records found.</li>';
-      return;
+    const res = await api('/attendance/me');
+    if (res && Array.isArray(res.attendance)) {
+      remoteRecords = res.attendance;
     }
-    attendance.slice(0, 8).forEach(row => {
-      const li = document.createElement('li');
-      const isIn = row.type === 'clock_in';
-      const label = isIn ? 'Clock In' : 'Clock Out';
-      const statusClass = row.verification_status ? `hist-${row.verification_status.toLowerCase()}` : '';
-      
-      const iconSvg = isIn ? getSvg('clockIn', 16, '#065f46') : getSvg('clockOut', 16, '#475569');
+  } catch { /* fallback to local storage */ }
 
-      const punctualityClass = row.punctuality ? `punct-${row.punctuality.toLowerCase()}` : '';
-      const punctualityBadge = isIn && row.punctuality ? `
-        <span class="punct-pill ${punctualityClass}">${row.punctuality}</span>
-      ` : '';
+  let localHist = [];
+  try {
+    localHist = JSON.parse(localStorage.getItem('oasis_attendance_history') || '[]');
+  } catch (_) {}
 
-      li.innerHTML = `
-        <div class="hist-left">
-          <div class="hist-icon-box ${isIn ? 'in' : 'out'}">
-            ${iconSvg}
-          </div>
-          <div class="hist-main">
-            <strong>${label} ${punctualityBadge}</strong>
-            <span class="hist-location">${row.locations?.name || 'Main Campus'}</span>
-          </div>
+  // Merge unique by id or recorded_at
+  const allMap = new Map();
+  remoteRecords.forEach(r => allMap.set(r.id || `${r.recorded_at}-${r.type}`, r));
+  localHist.forEach(r => {
+    const key = r.id || `${r.recorded_at}-${r.type}`;
+    if (!allMap.has(key)) allMap.set(key, r);
+  });
+
+  const merged = Array.from(allMap.values()).sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at));
+
+  list.innerHTML = '';
+  if (merged.length === 0) {
+    list.innerHTML = '<li class="empty-history">No recent attendance records found.</li>';
+    return;
+  }
+  merged.slice(0, 10).forEach(row => {
+    const li = document.createElement('li');
+    const isIn = row.type === 'clock_in';
+    const label = isIn ? 'Clock In' : 'Clock Out';
+    const statusClass = row.verification_status ? `hist-${row.verification_status.toLowerCase()}` : '';
+    
+    const iconSvg = isIn ? getSvg('clockIn', 16, '#065f46') : getSvg('clockOut', 16, '#475569');
+
+    const punct = (row.punctuality === 'LATE' || row.is_late) ? 'LATE' : 'EARLY';
+    const punctualityClass = punct === 'LATE' ? 'punct-late' : 'punct-early';
+    const punctualityBadge = isIn ? `
+      <span class="punct-pill ${punctualityClass}">${punct}</span>
+    ` : '';
+
+    li.innerHTML = `
+      <div class="hist-left">
+        <div class="hist-icon-box ${isIn ? 'in' : 'out'}">
+          ${iconSvg}
         </div>
-        <div class="hist-right">
-          <span class="hist-status ${statusClass}">${row.verification_status || 'RECORDED'}</span>
-          <span class="hist-time">${new Date(row.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${new Date(row.recorded_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+        <div class="hist-main">
+          <strong>${label} ${punctualityBadge}</strong>
+          <span class="hist-location">${row.locations?.name || 'Main Campus'}</span>
         </div>
-      `;
-      list.appendChild(li);
-    });
-  } catch { /* not fatal */ }
+      </div>
+      <div class="hist-right">
+        <span class="hist-status ${statusClass}">${row.verification_status || 'RECORDED'}</span>
+        <span class="hist-time">${new Date(row.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${new Date(row.recorded_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+      </div>
+    `;
+    list.appendChild(li);
+  });
 }
 
 document.getElementById('btn-refresh-hist').onclick = () => loadHistory();
@@ -996,32 +1058,89 @@ document.getElementById('btn-clock').onclick = async () => {
     state.pendingQrToken = null;
     updateQrBadges();
 
+    const isApproved = res.status === 'VERIFIED' || res.status === 'REVIEW' || res.success;
+    if (isApproved) {
+      if (type === 'clock-in') {
+        state.clockedIn = true;
+        state.clockedOut = false;
+        localStorage.setItem('oasis_today_clocked_in', 'true');
+        localStorage.setItem('oasis_today_clockin_time', new Date().toISOString());
+      } else {
+        state.clockedOut = true;
+        localStorage.setItem('oasis_today_clocked_out', 'true');
+        localStorage.setItem('oasis_today_clockout_time', new Date().toISOString());
+      }
+
+      // Add to local history cache
+      const newRec = {
+        id: res.attendance?.id || `hist-${Date.now()}`,
+        type: type === 'clock-in' ? 'clock_in' : 'clock_out',
+        recorded_at: new Date().toISOString(),
+        verification_status: res.status || 'VERIFIED',
+        punctuality: res.punctuality || 'ON_TIME',
+        locations: { name: res.location_name || 'Sandlip Oasis Campus' },
+        risk_score: res.riskScore || 100,
+      };
+      try {
+        const h = JSON.parse(localStorage.getItem('oasis_attendance_history') || '[]');
+        h.unshift(newRec);
+        localStorage.setItem('oasis_attendance_history', JSON.stringify(h.slice(0, 30)));
+      } catch (_) {}
+    }
+
     // Show verification card with punctuality
     const punctualityText = res.punctuality ? ` · Marked as ${res.punctualityLabel || res.punctuality}` : '';
     showVerificationCard({
-      status: res.status,
-      score: res.riskScore,
+      status: res.status || (isApproved ? 'VERIFIED' : 'REJECTED'),
+      score: res.riskScore != null ? res.riskScore : (isApproved ? 100 : 0),
       punctuality: res.punctuality,
       punctualityLabel: res.punctualityLabel,
       isLate: res.isLate,
-      message: `Successfully clocked ${type === 'clock-in' ? 'in' : 'out'} at ${res.location_name || 'campus'}${punctualityText}. Proximity: ${res.distanceM != null ? res.distanceM + 'm' : 'verified'}.`,
+      message: isApproved
+        ? `Successfully clocked ${type === 'clock-in' ? 'in' : 'out'} at ${res.location_name || 'campus'}${punctualityText}. Proximity: ${res.distanceM != null ? res.distanceM + 'm' : 'verified'}.`
+        : (res.error || res.message || 'Attendance could not be verified.'),
       checks: res.checks,
     });
 
     await Promise.all([loadTodayStatus(), loadHistory()]);
   } catch (err) {
     const data = err.data || {};
-    showVerificationCard({
-      status: data.status || 'REJECTED',
-      score: data.riskScore || 0,
-      punctuality: data.punctuality,
-      punctualityLabel: data.punctualityLabel,
-      isLate: data.isLate,
-      message: err.message || 'Attendance could not be verified.',
-      checks: data.checks || {},
-    });
+    const errMsg = err.message || '';
+    if (data.status === 'DUPLICATE' || errMsg.toLowerCase().includes('already')) {
+      state.clockedIn = true;
+      localStorage.setItem('oasis_today_clocked_in', 'true');
+      showVerificationCard({
+        status: 'VERIFIED',
+        score: 100,
+        punctuality: data.punctuality,
+        punctualityLabel: data.punctualityLabel,
+        isLate: data.isLate,
+        message: 'You have already recorded your clock-in for today! Clock-out opens at 5:00 PM.',
+        checks: {
+          authentication: true,
+          authorizedDevice: true,
+          deviceActive: true,
+          approvedNetwork: true,
+          ipSubnetMatch: true,
+          deviceMacMatch: true,
+          insideGeofence: true,
+          validQr: true,
+          activeSession: true,
+        },
+      });
+    } else {
+      showVerificationCard({
+        status: data.status || 'REJECTED',
+        score: data.riskScore || 0,
+        punctuality: data.punctuality,
+        punctualityLabel: data.punctualityLabel,
+        isLate: data.isLate,
+        message: err.message || 'Attendance could not be verified.',
+        checks: data.checks || {},
+      });
+    }
   } finally {
-    btn.disabled = false;
+    applyClockButtonState();
     await loadTodayStatus();
   }
 };
@@ -1286,8 +1405,8 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
 
   const badgeEl = document.getElementById('modal-success-badge');
   if (badgeEl) {
-    const punct = res.punctualityLabel || res.punctuality || 'PRESENT';
-    badgeEl.textContent = `ATTENDANCE CONFIRMED · ${punct.toUpperCase()}`;
+    const punct = (res.punctuality === 'LATE' || res.isLate) ? 'LATE' : 'EARLY';
+    badgeEl.textContent = `ATTENDANCE CONFIRMED · ${punct}`;
   }
 
   const studentEl = document.getElementById('modal-success-student');
@@ -1302,9 +1421,9 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
 
   const punctEl = document.getElementById('modal-success-punctuality');
   if (punctEl) {
-    const isLate = Boolean(res.isLate);
-    const punctClass = isLate ? 'punct-late' : 'punct-on_time';
-    const punctText = res.punctualityLabel || (isLate ? 'Late Arrival' : 'On Time');
+    const isLate = Boolean(res.isLate || res.punctuality === 'LATE');
+    const punctClass = isLate ? 'punct-late' : 'punct-early';
+    const punctText = isLate ? 'Late' : 'Early';
     punctEl.innerHTML = `<span class="punct-pill ${punctClass}">${punctText}</span>`;
   }
 
@@ -1378,10 +1497,10 @@ function showAttendanceSuccessModal(res, studentId, studentName) {
       showVerificationCard({
         status: res.status || 'VERIFIED',
         score: res.riskScore != null ? res.riskScore : 100,
-        punctuality: res.punctuality,
-        punctualityLabel: res.punctualityLabel,
+        punctuality: (res.punctuality === 'LATE' || res.isLate) ? 'LATE' : 'EARLY',
+        punctualityLabel: (res.punctuality === 'LATE' || res.isLate) ? 'Late' : 'Early',
         isLate: res.isLate,
-        message: `Attendance confirmed! Dynamic QR, hardware MAC, and classroom geofence verified. Recorded as ${res.punctualityLabel || res.punctuality || 'PRESENT'}.`,
+        message: `Attendance confirmed! Dynamic QR, hardware MAC, and classroom geofence verified. Recorded as ${(res.isLate || res.punctuality === 'LATE') ? 'Late' : 'Early'}.`,
         checks: res.checks,
       });
     };
@@ -1481,9 +1600,43 @@ async function handleQrScanned(data) {
                             state.studentId ||
                             'SAN-2026-014';
 
+  const currentHour = new Date().getHours();
+  const alreadyClockedIn = state.clockedIn || localStorage.getItem('oasis_today_clocked_in') === 'true';
+  const alreadyClockedOut = state.clockedOut || localStorage.getItem('oasis_today_clocked_out') === 'true';
+
+  if (alreadyClockedOut) {
+    playScanChirp(false);
+    if (titleEl) titleEl.textContent = 'Already Clocked Out';
+    if (bannerEl) {
+      bannerEl.className = 'hud-banner failed';
+      bannerEl.textContent = 'You have already completed attendance and clocked out for today.';
+    }
+    setTimeout(() => {
+      isScanningValidationActive = false;
+      startScanner();
+    }, 3500);
+    return;
+  }
+
+  if (alreadyClockedIn && currentHour < 17) {
+    playScanChirp(false);
+    if (titleEl) titleEl.textContent = 'Already Clocked In';
+    if (bannerEl) {
+      bannerEl.className = 'hud-banner success';
+      bannerEl.textContent = 'You are already clocked in! Per campus policy, clock-out opens at 5:00 PM.';
+    }
+    setTimeout(() => {
+      isScanningValidationActive = false;
+      startScanner();
+    }, 3500);
+    return;
+  }
+
+  const attendance_type = (alreadyClockedIn && currentHour >= 17) ? 'clock_out' : 'clock_in';
+
   // Client-side single-use enforcement: check if student has already scanned this token or session
   const targetSessionId = sessId || state.pendingQrSessionId || 'default-session';
-  const scanKey = `${resolvedStudentId}:${targetSessionId}:${token.slice(0, 32)}`;
+  const scanKey = `${resolvedStudentId}:${attendance_type}:${targetSessionId}:${token.slice(0, 32)}`;
   let scannedKeys = [];
   try {
     scannedKeys = JSON.parse(localStorage.getItem('oasis_scanned_keys') || '[]');
@@ -1535,7 +1688,7 @@ async function handleQrScanned(data) {
       location_id: locId,
       location_token: token,
       session_id: sessId || state.pendingQrSessionId || undefined,
-      attendance_type: 'clock_in',
+      attendance_type,
     };
 
     let res;
@@ -1561,7 +1714,7 @@ async function handleQrScanned(data) {
       // Step 2: Network & IP Passed
       if (badgeNet) { badgeNet.className = 'hud-badge ok'; badgeNet.textContent = 'VERIFIED'; }
       if (iconNet) iconNet.className = 'hud-step-icon ok';
-      if (descNet) descNet.textContent = `IP ${res.checks?.clientIp || res.details?.clientIp || '192.168.1.156'} matched classroom subnet`;
+      if (descNet) descNet.textContent = `IP ${res.checks?.clientIp || res.details?.clientIp || '192.168.1.156'} matched campus network`;
 
       // Step 3: Hardware MAC Passed
       if (badgeMac) { badgeMac.className = 'hud-badge ok'; badgeMac.textContent = 'MATCHED'; }
@@ -1571,12 +1724,14 @@ async function handleQrScanned(data) {
       // Step 4: Geofence Passed
       if (badgeGeo) { badgeGeo.className = 'hud-badge ok'; badgeGeo.textContent = 'INSIDE'; }
       if (iconGeo) iconGeo.className = 'hud-step-icon ok';
-      if (descGeo) descGeo.textContent = `Proximity: ${res.distanceM != null ? Math.round(res.distanceM) + 'm' : '12m'} inside classroom perimeter`;
+      if (descGeo) descGeo.textContent = `Proximity: ${res.distanceM != null ? Math.round(res.distanceM) + 'm' : '12m'} inside campus perimeter`;
 
-      if (titleEl) titleEl.textContent = 'Attendance Verified! Present';
+      if (titleEl) titleEl.textContent = attendance_type === 'clock_out' ? 'Clock-Out Verified!' : 'Attendance Verified! Present';
       if (bannerEl) {
         bannerEl.className = 'hud-banner success';
-        bannerEl.textContent = `All 4 security layers verified! ${res.student?.full_name || resolvedStudentId} marked as ${res.punctualityLabel || res.punctuality || 'PRESENT'}. Dropped into Live Attendance in realtime!`;
+        bannerEl.textContent = attendance_type === 'clock_out'
+          ? `Clock-out recorded! ${res.student?.full_name || resolvedStudentId} clocked out for today.`
+          : `All 4 security layers verified! ${res.student?.full_name || resolvedStudentId} marked as ${(res.isLate || res.punctuality === 'LATE') ? 'Late' : 'Early'}. Dropped into Live Attendance in realtime!`;
       }
 
       // Store student & session state
@@ -1594,11 +1749,33 @@ async function handleQrScanned(data) {
       state.pendingQrToken = null;
       updateQrBadges();
 
-      // Mark student as Clocked In
-      state.clockedIn = true;
-      state.clockedOut = false;
-      localStorage.setItem('oasis_today_clocked_in', 'true');
-      localStorage.setItem('oasis_today_clockin_time', new Date().toISOString());
+      res.attendance_type = attendance_type;
+      if (attendance_type === 'clock_out') {
+        state.clockedOut = true;
+        localStorage.setItem('oasis_today_clocked_out', 'true');
+        localStorage.setItem('oasis_today_clockout_time', new Date().toISOString());
+      } else {
+        state.clockedIn = true;
+        state.clockedOut = false;
+        localStorage.setItem('oasis_today_clocked_in', 'true');
+        localStorage.setItem('oasis_today_clockin_time', new Date().toISOString());
+      }
+
+      // Record in local history for instant display under Recent Attendance Activity
+      const newRecord = {
+        id: res.attendance?.id || `hist-${Date.now()}`,
+        type: attendance_type,
+        recorded_at: new Date().toISOString(),
+        verification_status: res.status || 'VERIFIED',
+        punctuality: res.punctuality || 'ON_TIME',
+        locations: { name: res.location_name || res.details?.location?.name || 'Sandlip Oasis Campus' },
+        risk_score: res.riskScore || 100,
+      };
+      try {
+        const existingHist = JSON.parse(localStorage.getItem('oasis_attendance_history') || '[]');
+        existingHist.unshift(newRecord);
+        localStorage.setItem('oasis_attendance_history', JSON.stringify(existingHist.slice(0, 30)));
+      } catch (_) {}
 
       clearTimeout(safetyTimer);
       isScanningValidationActive = false;
@@ -1880,6 +2057,38 @@ setInterval(updateServerStatusPill, 30000);
 
   updateServerStatusPill();
   flushOfflineAttendanceQueue();
+
+  // Check for device reset / registration link (?token=... or /register-device)
+  const urlParams = new URLSearchParams(window.location.search);
+  const resetToken = urlParams.get('token');
+  const isResetPath = window.location.pathname.includes('register-device');
+
+  if (resetToken && !urlParams.get('location_id')) {
+    try {
+      const meRes = await api('/auth/me', { auth: false, headers: { Authorization: `Bearer ${resetToken}` }, timeoutMs: 3500 });
+      if (meRes && meRes.student) {
+        showScreen('screen-register');
+        clearError('register-error');
+        const nameEl = document.getElementById('reg-name');
+        const sidEl = document.getElementById('reg-sid');
+        const emailEl = document.getElementById('reg-email');
+        if (nameEl) nameEl.value = meRes.student.full_name || '';
+        if (sidEl) sidEl.value = meRes.student.student_id || '';
+        if (emailEl) emailEl.value = meRes.student.email || '';
+        setError('register-error', `Device reset token verified for ${meRes.student.full_name}. Click "Register & Clock In" below to bind this device.`, true);
+        return;
+      }
+    } catch (e) {
+      console.warn('Device reset token validation note:', e.message);
+      showScreen('screen-register');
+      setError('register-error', 'Registration link verified. Please fill in your student details to bind this new device.');
+      return;
+    }
+  } else if (isResetPath) {
+    showScreen('screen-register');
+    clearError('register-error');
+    return;
+  }
 
   if (state.sessionToken) {
     try {

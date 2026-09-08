@@ -18,12 +18,26 @@ create table if not exists students (
 create table if not exists devices (
   id uuid primary key default gen_random_uuid(),
   student_id uuid references students(id) on delete cascade,
+  device_id text,
+  device_name text,
+  platform text,
   mac_address text,
+  device_mac_reference text,
   webauthn_credential_id text unique,
   public_key text,
   counter bigint not null default 0,
   transports text[],
   fallback_token_hash text, -- used only if WebAuthn unavailable
+  status text not null default 'AUTHORIZED', -- AUTHORIZED | PENDING | REVOKED | BLOCKED
+  authorized_by uuid references students(id),
+  authorized_at timestamptz,
+  ip_address text,
+  first_ip text,
+  last_ip text,
+  user_agent text,
+  last_location_lat double precision,
+  last_location_lng double precision,
+  last_seen_at timestamptz,
   registered_at timestamptz not null default now(),
   revoked_at timestamptz
 );
@@ -33,9 +47,11 @@ create table if not exists locations (
   name text not null,
   latitude double precision not null,
   longitude double precision not null,
-  geofence_radius_m integer not null default 50,
+  geofence_radius_m integer not null default 150,
   active_start time,
   active_end time,
+  active_qr_nonce text,
+  qr_generated_at timestamptz,
   created_by uuid references students(id),
   created_at timestamptz not null default now()
 );
@@ -57,6 +73,14 @@ create table if not exists attendance (
   device_mac text,
   ip_address text,
   gps_accuracy double precision,
+  distance_meters double precision,
+  location_verified boolean default false,
+  clock_in_method text default 'LOGIN',
+  user_agent text,
+  device_platform text,
+  qr_token_id text,
+  qr_session_id text,
+  server_timestamp timestamptz default now(),
   is_late boolean default false,
   marked_absent_at timestamptz, -- when auto-marked absent by scheduler
   absence_reason text -- e.g., 'No clock-in by 09:30 AM'
@@ -69,8 +93,35 @@ create table if not exists audit_log (
   id uuid primary key default gen_random_uuid(),
   student_id uuid references students(id),
   event_type text not null, -- device_mismatch | geofence_fail | expired_token | admin_action | etc.
+  device_id text,
+  session_id uuid,
+  attendance_session_id uuid,
+  method text,
+  event text,
+  result text,
+  reason text,
+  ip_address text,
+  user_agent text,
+  latitude double precision,
+  longitude double precision,
+  gps_accuracy double precision,
+  distance_meters double precision,
   detail jsonb,
   created_at timestamptz not null default now()
+);
+
+create table if not exists sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references students(id) on delete cascade,
+  device_id text,
+  session_token_hash text,
+  ip_address text,
+  user_agent text,
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  expires_at timestamptz,
+  revoked_at timestamptz,
+  status text not null default 'ACTIVE'
 );
 
 create table if not exists admin_accounts (
@@ -151,6 +202,7 @@ alter table approved_networks enable row level security;
 alter table attendance_sessions enable row level security;
 alter table webauthn_challenges enable row level security;
 alter table holidays enable row level security;
+alter table sessions enable row level security;
 
 -- The Express backend talks to Postgres using the service_role key (server-side only),
 -- which bypasses RLS entirely. These policies protect the DB if anon/publishable keys
