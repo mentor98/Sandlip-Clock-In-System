@@ -62,6 +62,7 @@ router.get('/stream', (req, res) => {
     try {
       res.write(`event: session\ndata: ${JSON.stringify({ active: false, deletedId: data.id })}\n\n`);
       res.write(`event: realtime\ndata: ${JSON.stringify({ table: 'attendance_sessions', action: 'DELETE', eventType: 'DELETE', record: data })}\n\n`);
+      res.write(`event: realtime\ndata: ${JSON.stringify({ table: 'sessions', action: 'DELETE', eventType: 'DELETE', record: data })}\n\n`);
     } catch (_) {}
   };
 
@@ -79,18 +80,8 @@ router.get('/stream', (req, res) => {
     }
   }, 12000);
 
-  // Graceful serverless cycling: close cleanly after 50 seconds before Vercel lambda limits.
-  // Standard EventSource automatically reconnects cleanly with zero errors.
-  const serverlessTimeout = setTimeout(() => {
-    try {
-      res.write(`event: reconnect\ndata: ${JSON.stringify({ reason: 'cycle' })}\n\n`);
-      res.end();
-    } catch (_) {}
-  }, 50000);
-
   req.on('close', () => {
     clearInterval(heartbeat);
-    clearTimeout(serverlessTimeout);
     eventBus.removeListener('realtime_event', onRealtimeEvent);
     eventBus.removeListener('attendance_recorded', onAttendanceRecorded);
     eventBus.removeListener('session_started', onSessionStarted);

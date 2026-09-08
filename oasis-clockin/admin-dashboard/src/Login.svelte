@@ -1,5 +1,6 @@
 <script>
   import { api, setAdminSession } from './lib/api.js';
+  import { reconnectRealtime } from './lib/realtime.js';
   import Icon from './lib/Icon.svelte';
 
   export let onLoggedIn;
@@ -23,6 +24,7 @@
         auth: false,
       });
       setAdminSession(res.sessionToken);
+      try { reconnectRealtime(); } catch (_) {}
       onLoggedIn();
     } catch (e) {
       error = e.message || 'Invalid admin ID or password.';

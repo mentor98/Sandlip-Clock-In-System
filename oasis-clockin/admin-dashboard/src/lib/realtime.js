@@ -39,12 +39,15 @@ function getSharedEventSource() {
       sharedEventSource.addEventListener('session', (e) => {
         try {
           const parsed = JSON.parse(e.data);
-          const sessionRecord = parsed.session || parsed;
+          const sessionRecord = parsed.session || (parsed.deletedId ? { id: parsed.deletedId } : parsed);
+          const isDelete = parsed.active === false || parsed.eventType === 'DELETE' || parsed.action === 'DELETE' || Boolean(parsed.deletedId);
           const normalized = {
-            eventType: parsed.active === false ? 'DELETE' : 'UPDATE',
+            eventType: isDelete ? 'DELETE' : 'UPDATE',
+            action: isDelete ? 'DELETE' : 'UPDATE',
             table: 'attendance_sessions',
             record: sessionRecord,
             session: sessionRecord,
+            deletedId: parsed.deletedId || (isDelete ? sessionRecord?.id : null),
           };
           sseListeners.forEach((listener) => {
             try { listener(normalized); } catch (_) {}
@@ -71,6 +74,14 @@ function getSharedEventSource() {
     }
   }
   return sharedEventSource;
+}
+
+export function reconnectRealtime() {
+  if (sharedEventSource) {
+    try { sharedEventSource.close(); } catch (_) {}
+    sharedEventSource = null;
+  }
+  return getSharedEventSource();
 }
 
 /**

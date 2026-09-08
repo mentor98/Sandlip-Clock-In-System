@@ -467,7 +467,7 @@ function performLocalVerifiedAttendance(payload) {
 }
 
 // ====== API ======
-async function api(path, { method = 'GET', body, auth = true, timeoutMs = 4000, isRetry = false } = {}) {
+async function api(path, { method = 'GET', body, auth = true, timeoutMs = 8000, isRetry = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && state.sessionToken) headers.Authorization = `Bearer ${state.sessionToken}`;
   if (state.studentId) headers['x-student-id'] = state.studentId;
@@ -1212,15 +1212,25 @@ function setupSessionRealtimeStream() {
     const streamUrl = base === '/api' ? '/api/sessions/active/stream' : `${base}/sessions/active/stream`;
     sessionEventSource = new EventSource(streamUrl);
 
-    sessionEventSource.addEventListener('session', (event) => {
+    const handleSessionData = (raw) => {
       try {
-        const data = JSON.parse(event.data);
+        const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
         const session = (data && data.session && data.active !== false) ? data.session : null;
         updateSessionUI(session);
       } catch (e) {
-        console.warn('Realtime session event notice:', e);
+        console.warn('Realtime session parse notice:', e);
       }
+    };
+
+    sessionEventSource.addEventListener('session', (event) => {
+      handleSessionData(event.data);
     });
+
+    sessionEventSource.onmessage = (event) => {
+      if (event.data && (event.data.includes('"session"') || event.data.includes('"active"'))) {
+        handleSessionData(event.data);
+      }
+    };
 
     sessionEventSource.addEventListener('attendance', (event) => {
       try {
@@ -1236,7 +1246,8 @@ function setupSessionRealtimeStream() {
     });
 
     sessionEventSource.onerror = () => {
-      // Browser handles auto-reconnect with backoff
+      // Immediate REST fetch upon disconnect/error so state never stays stale
+      loadSession();
     };
   } catch (err) {
     console.warn('Realtime session EventSource init notice:', err);
@@ -1245,15 +1256,12 @@ function setupSessionRealtimeStream() {
 
 async function loadSession() {
   try {
-    const res = await api('/sessions/active', { auth: false, timeoutMs: 4000 });
+    const res = await api(`/sessions/active?_t=${Date.now()}`, { auth: false, timeoutMs: 4000 });
     const session = (res && res.session && res.active !== false) ? res.session : null;
     updateSessionUI(session);
     return session;
   } catch (e) {
     console.warn('Session load notice:', e.message);
-    if (!state.activeSession) {
-      updateSessionUI(null);
-    }
     return state.activeSession || null;
   }
 }
@@ -2546,9 +2554,22 @@ setInterval(updateServerStatusPill, 30000);
   // Connect to live real-time session updates stream for 0ms active/closed sync
   setupSessionRealtimeStream();
 
-  // Load session status right away and poll periodically as dual-layer fallback
+  // Load session status right away and sync every 3 seconds
   await loadSession();
-  setInterval(loadSession, 4000);
+  setInterval(loadSession, 3000);
+
+  // Instant refresh when user returns to tab or window gains focus
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      loadSession();
+      if (!sessionEventSource || sessionEventSource.readyState === EventSource.CLOSED) {
+        setupSessionRealtimeStream();
+      }
+    }
+  });
+  window.addEventListener('focus', () => {
+    loadSession();
+  });
 
   // Check for device reset / registration link (?token=... or /register-device)
   const urlParams = new URLSearchParams(window.location.search);

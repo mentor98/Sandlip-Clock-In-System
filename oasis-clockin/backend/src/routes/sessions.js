@@ -35,8 +35,8 @@ function isSessionActive(s, now = new Date()) {
   if (s.deleted_at || s.closed_at) return false;
   if (s.ends_at) {
     const end = new Date(s.ends_at);
-    // Allow a 1-minute clock drift margin so slight clock differences do not prematurely close the session
-    if (!isNaN(end.getTime()) && (end.getTime() + 60000) <= now.getTime()) return false;
+    // Allow a 15-minute clock drift margin so slight clock differences and timezone variances do not prematurely close the session
+    if (!isNaN(end.getTime()) && (end.getTime() + 900000) <= now.getTime()) return false;
   }
   return true;
 }
@@ -98,6 +98,8 @@ const handleActiveSessionStream = async (req, res) => {
       const session = await getActiveSession();
       const payload = JSON.stringify({ session, active: Boolean(session) });
       res.write(`event: session\ndata: ${payload}\n\n`);
+      res.write(`data: ${payload}\n\n`);
+      if (typeof res.flush === 'function') res.flush();
     } catch (_) {}
   };
 
@@ -113,6 +115,7 @@ const handleActiveSessionStream = async (req, res) => {
       if (!eventData) return;
       const rec = eventData.record || eventData;
       res.write(`event: attendance\ndata: ${JSON.stringify(rec)}\n\n`);
+      if (typeof res.flush === 'function') res.flush();
     } catch (_) {}
   };
 
@@ -124,6 +127,7 @@ const handleActiveSessionStream = async (req, res) => {
     } else if (t === 'attendance') {
       try {
         res.write(`event: attendance\ndata: ${JSON.stringify(payload.record || payload)}\n\n`);
+        if (typeof res.flush === 'function') res.flush();
       } catch (_) {}
     }
   };
@@ -137,6 +141,7 @@ const handleActiveSessionStream = async (req, res) => {
   const heartbeat = setInterval(() => {
     try {
       res.write(': heartbeat\n\n');
+      if (typeof res.flush === 'function') res.flush();
     } catch {
       clearInterval(heartbeat);
     }
@@ -200,23 +205,18 @@ router.get('/:id/stream', (req, res) => {
     }
   }, 15000);
 
-  // Graceful serverless cycling: close cleanly after 50 seconds before Vercel lambda limits
-  const serverlessTimeout = setTimeout(() => {
-    try {
-      res.write(`event: reconnect\ndata: ${JSON.stringify({ reason: 'cycle' })}\n\n`);
-      res.end();
-    } catch (_) {}
-  }, 50000);
-
   req.on('close', () => {
     clearInterval(heartbeat);
-    clearTimeout(serverlessTimeout);
     eventBus.removeListener('attendance_recorded', onAttendance);
   });
 });
 
 // GET /api/sessions/active — public status check for students to know if a session is open
 router.get('/active', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   const activeSession = await getActiveSession();
 
   if (activeSession) {
@@ -226,7 +226,7 @@ router.get('/active', async (_req, res) => {
   return res.json({
     session: null,
     active: false,
-    message: 'Please wait for an admin to open a session before clocking in.',
+    message: 'Please wait for an administrator to open a session before clocking in.',
   });
 });
 
@@ -236,6 +236,9 @@ router.use(requireAuth, requireAdmin);
 
 // GET /api/sessions — list all sessions
 router.get('/', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   try {
     const { data, error } = await supabaseAdmin
       .from('attendance_sessions')
@@ -503,9 +506,10 @@ router.delete('/:id', async (req, res) => {
   }
 
   // Remove from inMemorySessions
-  const idx = inMemorySessions.findIndex((s) => s.id === sessionId);
-  if (idx !== -1) {
-    inMemorySessions.splice(idx, 1);
+  for (let i = inMemorySessions.length - 1; i >= 0; i--) {
+    if (String(inMemorySessions[i].id) === String(sessionId)) {
+      inMemorySessions.splice(i, 1);
+    }
   }
 
   // Broadcast realtime event so connected Admin Dashboards and Student PWAs update immediately

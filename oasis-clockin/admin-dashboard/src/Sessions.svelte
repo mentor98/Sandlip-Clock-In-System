@@ -41,8 +41,8 @@
   async function load() {
     try {
       const [sessRes, locRes] = await Promise.all([
-        api('/sessions'),
-        api('/admin/locations'),
+        api(`/sessions?_t=${Date.now()}`),
+        api(`/admin/locations?_t=${Date.now()}`),
       ]);
       sessions = (sessRes.sessions || []).sort((a, b) => new Date(b.started_at || b.created_at) - new Date(a.started_at || a.created_at));
       locations = locRes.locations || [];
@@ -68,20 +68,39 @@
     if (viewingSession) viewAttendance(viewingSession);
   });
 
-  const unsubSessions = subscribeTable('sessions', '*', debouncedLoad);
-  const unsubAttSessions = subscribeTable('attendance_sessions', '*', debouncedLoad);
+  const handleRealtimeSession = (payload) => {
+    if (!payload) return;
+    const ev = String(payload.eventType || payload.action || '').toUpperCase();
+    const rec = payload.record || payload.session;
+    const recId = rec?.id || payload.deletedId;
+
+    if (ev === 'DELETE' && recId) {
+      sessions = sessions.filter(s => String(s.id) !== String(recId));
+      if (qrSession && String(qrSession.id) === String(recId)) closeLiveQr();
+      if (viewingSession && String(viewingSession.id) === String(recId)) viewingSession = null;
+    } else if (ev === 'INSERT' && rec?.id) {
+      if (String(rec.status).toUpperCase() === 'ACTIVE') {
+        sessions = sessions.map(s => String(s.status).toUpperCase() === 'ACTIVE' ? { ...s, status: 'CLOSED' } : s);
+      }
+      sessions = [rec, ...sessions.filter(s => String(s.id) !== String(rec.id))];
+    } else if (ev === 'UPDATE' && rec?.id) {
+      sessions = sessions.map(s => String(s.id) === String(rec.id) ? { ...s, ...rec } : s);
+    }
+    debouncedLoad();
+  };
+
+  const unsubSessions = subscribeTable('sessions', '*', handleRealtimeSession);
+  const unsubAttSessions = subscribeTable('attendance_sessions', '*', handleRealtimeSession);
+  const sessionPollInterval = setInterval(debouncedLoad, 4000);
 
   onDestroy(() => {
     clearTimeout(loadTimer);
+    clearInterval(sessionPollInterval);
     unsub();
     unsubSessions();
     unsubAttSessions();
     clearInterval(qrTimer);
     clearInterval(autoRefreshTimer);
-    if (liveSse) {
-      liveSse.close();
-      liveSse = null;
-    }
   });
 
   async function startSession() {
@@ -95,22 +114,27 @@
       });
       successMsg = `Session "${res.session.title}" started.`;
       const createdSession = res.session;
+      // Optimistic local state update: close prior active session and prepend newly created
+      sessions = sessions.map(s => String(s.status).toUpperCase() === 'ACTIVE' ? { ...s, status: 'CLOSED', closed_at: new Date().toISOString() } : s);
+      sessions = [createdSession, ...sessions.filter(s => String(s.id) !== String(createdSession.id))];
       title = ''; locationId = ''; endsAt = '';
-      await load();
-      // Auto open live QR projector for this active session
       openLiveQr(createdSession);
+      await load();
     } catch (e) { error = e.message; }
     finally { loading = false; }
   }
 
   async function closeSession(s) {
     error = ''; successMsg = '';
+    const targetId = s.id;
+    // Optimistic close in UI
+    sessions = sessions.map(sess => String(sess.id) === String(targetId) ? { ...sess, status: 'CLOSED', closed_at: new Date().toISOString() } : sess);
     try {
-      await api(`/sessions/${s.id}/close`, { method: 'PATCH' });
+      await api(`/sessions/${targetId}/close`, { method: 'PATCH' });
       successMsg = `Session "${s.title}" closed.`;
-      if (qrSession?.id === s.id) closeLiveQr();
+      if (qrSession && String(qrSession.id) === String(targetId)) closeLiveQr();
       await load();
-    } catch (e) { error = e.message; }
+    } catch (e) { error = e.message; await load(); }
   }
 
   function promptDelete(s) {
@@ -120,16 +144,21 @@
   async function confirmDeleteSession() {
     if (!sessionToDelete) return;
     const s = sessionToDelete;
+    const targetId = s.id;
     deletingSession = true;
     error = '';
+    // Optimistic delete: immediately remove from UI with 0ms latency
+    sessions = sessions.filter((sess) => String(sess.id) !== String(targetId));
+    if (qrSession && String(qrSession.id) === String(targetId)) closeLiveQr();
+    if (viewingSession && String(viewingSession.id) === String(targetId)) viewingSession = null;
+    sessionToDelete = null;
     try {
-      await api(`/sessions/${s.id}`, { method: 'DELETE' });
+      await api(`/sessions/${targetId}`, { method: 'DELETE' });
       successMsg = `Session "${s.title}" deleted successfully.`;
-      if (qrSession?.id === s.id) closeLiveQr();
-      sessionToDelete = null;
       await load();
     } catch (e) {
       error = e.message;
+      await load();
     } finally {
       deletingSession = false;
     }
@@ -155,53 +184,10 @@
     await generateLiveQr(s);
     await loadLiveScans(s);
     clearInterval(autoRefreshTimer);
+    // Gentle 15-second fallback poll (instant scans arrive live via shared real-time stream)
     autoRefreshTimer = setInterval(() => {
       if (qrSession) loadLiveScans(qrSession);
-    }, 2000);
-
-    // Connect real-time Server-Sent Events stream for instantaneous zero-latency updates
-    if (typeof EventSource !== 'undefined') {
-      try {
-        if (liveSse) {
-          liveSse.close();
-          liveSse = null;
-        }
-        const adminTok = getAdminSession();
-        const sseUrl = `/api/sessions/${s.id}/stream` + (adminTok ? `?auth=${encodeURIComponent(adminTok)}` : '');
-        liveSse = new EventSource(sseUrl);
-        const handleIncomingScan = (item) => {
-          if (!item || !qrSession) return;
-          if (item.session_id && String(item.session_id) !== String(qrSession.id)) return;
-          const exists = liveScans.some(existing => existing.id === item.id);
-          if (!exists) {
-            liveScans = [item, ...liveScans];
-          } else {
-            liveScans = liveScans.map(existing => existing.id === item.id ? item : existing);
-          }
-        };
-
-        liveSse.addEventListener('attendance', (e) => {
-          try {
-            const item = JSON.parse(e.data);
-            handleIncomingScan(item);
-          } catch (_parseErr) {
-            if (qrSession) loadLiveScans(qrSession);
-          }
-        });
-
-        liveSse.onmessage = (e) => {
-          try {
-            const item = JSON.parse(e.data);
-            handleIncomingScan(item);
-          } catch (_) {}
-        };
-        liveSse.onerror = () => {
-          // Keep running polling fallback seamlessly
-        };
-      } catch (err) {
-        console.warn('Realtime SSE setup notice:', err);
-      }
-    }
+    }, 15000);
   }
 
   async function generateLiveQr(s, withAutoRotate = autoRotate) {
@@ -273,10 +259,6 @@
     clearInterval(qrTimer);
     qrTimer = null;
     clearInterval(autoRefreshTimer);
-    if (liveSse) {
-      liveSse.close();
-      liveSse = null;
-    }
     qrSession = null;
     qrSrc = '';
     qrExpiry = 0;
